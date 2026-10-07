@@ -1,4 +1,5 @@
 import {
+  Banknote,
   BarChart3,
   Box,
   Building2,
@@ -222,6 +223,25 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
       { href: `${base}/analytics`, label: "Rapports", icon: BarChart3 },
       { href: `${base}/settings`, label: "Paramètres", icon: Settings },
     ]);
+  }
+
+  if (role === "FINANCE") {
+    return [
+      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      {
+        href: `${base}/payments`,
+        label: "Paiements",
+        icon: CreditCard,
+        mobilePrimary: true,
+      },
+      {
+        href: `${base}/caissier`,
+        label: "Caisse COD",
+        icon: Banknote,
+        mobilePrimary: true,
+      },
+      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+    ];
   }
 
   const items: PortalNavDef[] = [

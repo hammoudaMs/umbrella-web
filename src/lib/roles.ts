@@ -5,6 +5,7 @@ export type AppRole =
   | "SUPPORT"
   | "PICKUP"
   | "MAGASINIER"
+  | "FINANCE"
   | "EXPEDITEUR"
   | "LIVREUR"
   | "CLIENT";
@@ -16,6 +17,7 @@ export const PORTAL_BY_ROLE: Record<AppRole, string> = {
   SUPPORT: "/support",
   PICKUP: "/pickup",
   MAGASINIER: "/magasinier",
+  FINANCE: "/finance",
   EXPEDITEUR: "/expediteur",
   LIVREUR: "/livreur",
   CLIENT: "/client",
@@ -28,6 +30,7 @@ export const ROLE_LABEL: Record<AppRole, string> = {
   SUPPORT: "Support",
   PICKUP: "Pickup",
   MAGASINIER: "Magasinier",
+  FINANCE: "Finance",
   EXPEDITEUR: "Expéditeur",
   LIVREUR: "Livreur",
   CLIENT: "Client",

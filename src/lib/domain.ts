@@ -47,6 +47,9 @@ export type Parcel = {
   } | null;
   driverId?: number | null;
   driver?: (PersonRef & { phone?: string | null }) | null;
+  /** CLIENT account matched by parcel phone (for livreur ↔ client chat). */
+  recipientUserId?: number | null;
+  recipientUser?: (PersonRef & { phone?: string | null }) | null;
   zoneId?: number | null;
   zone?: PersonRef | null;
   agencyId?: number | null;

@@ -174,11 +174,13 @@ export function AdminNavexDashboard({
       totalCount: filteredTotal,
       categories,
       statusKeysFilter: home.kpiStatusKeys,
+      hrefBase: home.kpiHrefBase,
     });
   }, [
     analytics?.kpis.total,
     basePath,
     categories,
+    home.kpiHrefBase,
     home.kpiStatusKeys,
     home.totalLabel,
     statusCards,

@@ -13,6 +13,7 @@ import { PORTAL_BY_ROLE } from "@/lib/roles";
 const DEMO_ACCOUNTS = [
   { email: "super@umbrella.tn", password: "Super@12345", label: "Super admin" },
   { email: "admin@umbrella.tn", password: "Admin@12345", label: "Admin" },
+  { email: "finance@umbrella.tn", password: "Finance@12345", label: "Finance" },
   { email: "chef@umbrella.tn", password: "Chef@12345", label: "Chef d'agence" },
   { email: "support@umbrella.tn", password: "Support@12345", label: "Support" },
   { email: "pickup@umbrella.tn", password: "Pickup@12345", label: "Pickup" },

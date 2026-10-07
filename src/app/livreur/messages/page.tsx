@@ -9,10 +9,12 @@ function MessagesInner() {
   const params = useSearchParams();
   const peer = params.get("peer");
   const parcel = params.get("parcel");
+  const call = params.get("call");
   return (
     <MessagesInbox
       initialPeerUserId={peer ? Number(peer) : undefined}
       initialParcelId={parcel ? Number(parcel) : undefined}
+      autoStartCall={call === "1"}
     />
   );
 }

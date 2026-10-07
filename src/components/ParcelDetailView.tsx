@@ -230,14 +230,22 @@ export function ParcelDetailView({
   const statusMeta = STATUS_META[parcel.status as StatusKey];
   const messagePeerId =
     role === "LIVREUR"
-      ? parcel.senderId
-      : role === "EXPEDITEUR" || role === "CLIENT"
-        ? parcel.driverId ?? null
-        : parcel.driverId ?? parcel.senderId;
+      ? (parcel.recipientUserId ?? null)
+      : role === "CLIENT" || role === "EXPEDITEUR"
+        ? (parcel.driverId ?? null)
+        : (parcel.driverId ?? parcel.senderId);
   const messagesHref =
     messagePeerId != null
       ? `${portalBase}/messages?peer=${messagePeerId}&parcel=${parcel.id}`
       : `${portalBase}/messages`;
+  const callHref =
+    messagePeerId != null
+      ? `${messagesHref}&call=1`
+      : messagesHref;
+  const canChatPeer =
+    role === "LIVREUR" || role === "CLIENT"
+      ? messagePeerId != null
+      : true;
 
   return (
     <div className="space-y-6">
@@ -414,18 +422,43 @@ export function ParcelDetailView({
                     <span className="text-ops-ink/50">/ {parcel.phone2}</span>
                   ) : null}
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Link href={messagesHref} className={buttonClass("secondary")}>
-                    <MessageSquare className="h-4 w-4" aria-hidden />
-                    Message Umbrella
-                  </Link>
-                  {messagePeerId != null ? (
-                    <Link href={messagesHref} className={buttonClass("secondary")}>
-                      <PhoneCall className="h-4 w-4" aria-hidden />
-                      Appel Umbrella
+                {canChatPeer ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Link
+                      href={messagesHref}
+                      className={buttonClass("secondary")}
+                    >
+                      <MessageSquare className="h-4 w-4" aria-hidden />
+                      {role === "LIVREUR"
+                        ? "Message client"
+                        : role === "CLIENT"
+                          ? "Message livreur"
+                          : "Message Umbrella"}
                     </Link>
-                  ) : null}
-                </div>
+                    {messagePeerId != null ? (
+                      <Link
+                        href={callHref}
+                        className={buttonClass("secondary")}
+                      >
+                        <PhoneCall className="h-4 w-4" aria-hidden />
+                        {role === "LIVREUR"
+                          ? "Appel client"
+                          : role === "CLIENT"
+                            ? "Appel livreur"
+                            : "Appel Umbrella"}
+                      </Link>
+                    ) : null}
+                  </div>
+                ) : role === "LIVREUR" ? (
+                  <p className="mt-2 text-xs text-ops-ink/45">
+                    Pas de compte client Umbrella pour ce numéro — utilisez
+                    l’appel téléphonique.
+                  </p>
+                ) : role === "CLIENT" && !parcel.driverId ? (
+                  <p className="mt-2 text-xs text-ops-ink/45">
+                    Aucun livreur assigné pour le moment.
+                  </p>
+                ) : null}
               </Detail>
               <Detail label="Adresse">
                 <span className="inline-flex items-start gap-1.5">

@@ -1,10 +1,12 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Banknote,
   BarChart3,
   Box,
   Building2,
   CreditCard,
   MapPin,
+  MessageSquare,
   Package,
   Palette,
   RefreshCw,
@@ -41,6 +43,8 @@ export type PortalHomeConfig = {
   showAnalyticsLink: boolean;
   /** When set, only these status keys (+ Total) appear as KPI cards */
   kpiStatusKeys?: string[];
+  /** Base path for KPI card links (defaults to `${basePath}/parcels`). */
+  kpiHrefBase?: string;
   primaryHref: string;
   primaryLabel: string;
   primaryHint: string;
@@ -442,6 +446,52 @@ export function portalHomeFor(role: AppRole): PortalHomeConfig {
     };
   }
 
+  if (role === "FINANCE") {
+    return {
+      subtitle: "Flux d’argent — demandes de versement et caisse COD.",
+      totalLabel: "Colis livrés (réseau)",
+      showNouveauCta: false,
+      showChart: false,
+      showPerformance: false,
+      showRevenue: true,
+      showSolde: true,
+      showReturns: false,
+      showDeliveredRecent: false,
+      showAnalyticsLink: false,
+      kpiStatusKeys: ["LIVRES", "LIVRES_PAYES", "REMBOURSES"],
+      kpiHrefBase: `${b}/payments`,
+      primaryHref: `${b}/payments`,
+      primaryLabel: "Paiements",
+      primaryHint: "Demandes et versements",
+      primaryIcon: "package",
+      retoursHref: `${b}/payments`,
+      shortcuts: [
+        {
+          href: `${b}/payments`,
+          label: "Paiements",
+          hint: "Approuver et verser",
+          tone: "bg-emerald-600",
+          icon: CreditCard,
+          primary: true,
+        },
+        {
+          href: `${b}/caissier`,
+          label: "Caisse COD",
+          hint: "Encaisser les livreurs",
+          tone: "bg-[#986A36]",
+          icon: Banknote,
+        },
+        {
+          href: `${b}/settings`,
+          label: "Paramètres",
+          hint: "Profil",
+          tone: "bg-zinc-600",
+          icon: Settings,
+        },
+      ],
+    };
+  }
+
   if (role === "EXPEDITEUR") {
     return {
       subtitle: "Votre activité d'aujourd'hui en un coup d'œil.",
@@ -544,6 +594,13 @@ export function portalHomeFor(role: AppRole): PortalHomeConfig {
           icon: MapPin,
         },
         {
+          href: `${b}/messages`,
+          label: "Messages",
+          hint: "Chat & appel clients",
+          tone: "bg-emerald-600",
+          icon: MessageSquare,
+        },
+        {
           href: `${b}/scanner`,
           label: "Scanner",
           hint: "Code-barres ou QR",
@@ -563,7 +620,7 @@ export function portalHomeFor(role: AppRole): PortalHomeConfig {
 
   // CLIENT — kept for completeness; page uses its own UI
   return {
-    subtitle: "Suivez vos colis et contactez le support si besoin.",
+    subtitle: "Suivez vos colis et contactez votre livreur.",
     totalLabel: "Mes colis",
     showNouveauCta: false,
     showChart: false,
@@ -586,6 +643,13 @@ export function portalHomeFor(role: AppRole): PortalHomeConfig {
         tone: "bg-sky-600",
         icon: Package,
         primary: true,
+      },
+      {
+        href: `${b}/messages`,
+        label: "Messages",
+        hint: "Chat & appel livreur",
+        tone: "bg-emerald-600",
+        icon: MessageSquare,
       },
       {
         href: `${b}/tickets`,

@@ -79,6 +79,7 @@ export function buildOpsStatusKpis({
   totalCount,
   categories,
   statusKeysFilter,
+  hrefBase,
 }: {
   basePath: string;
   countsByStatus: Map<string, number> | Record<string, number>;
@@ -88,7 +89,10 @@ export function buildOpsStatusKpis({
   categories?: StatusCategory[] | null;
   /** When set, only Total + these status keys are shown. */
   statusKeysFilter?: string[] | null;
+  /** Override KPI link base (defaults to `${basePath}/parcels`). */
+  hrefBase?: string;
 }): OpsKpi[] {
+  const linkBase = hrefBase ?? `${basePath}/parcels`;
   const get = (key: string) => {
     if (countsByStatus instanceof Map) return countsByStatus.get(key) ?? 0;
     return countsByStatus[key] ?? 0;
@@ -115,8 +119,8 @@ export function buildOpsStatusKpis({
       ? String(totalCount ?? keyedTotal)
       : String(get(cat.key));
     const href = isTotal
-      ? `${basePath}/parcels`
-      : `${basePath}/parcels?status=${encodeURIComponent(cat.key)}`;
+      ? linkBase
+      : `${linkBase}${linkBase.includes("?") ? "&" : "?"}status=${encodeURIComponent(cat.key)}`;
 
     return {
       label,

@@ -115,6 +115,7 @@ export class MockHttpError extends Error {
 }
 
 const STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN"];
+const MONEY_STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN", "FINANCE"];
 const OPS_STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN", "CHEF_AGENCE"];
 const RETURN_STATUSES_LIST = [
   "LIVRAISON_ANNULEE",
@@ -201,6 +202,42 @@ function seedDb(): MockDb {
   const agencyByGov = new Map(
     agencies.map((a) => [a.governorate.toLowerCase(), a.id] as const),
   );
+  const livreur = MOCK_USERS.find((u) => u.role === "LIVREUR");
+  const client = MOCK_USERS.find((u) => u.role === "CLIENT");
+  const sharedParcel = MOCK_PARCELS.find(
+    (p) =>
+      p.driverId === livreur?.id &&
+      p.phone === client?.phone &&
+      p.status !== "SUPPRIME",
+  );
+  const msgAt = new Date(Date.now() - 15 * 60_000).toISOString();
+  const conversations: MockConversation[] =
+    livreur && client
+      ? [
+          {
+            id: 1,
+            parcelId: sharedParcel?.id ?? null,
+            participantIds: [livreur.id, client.id],
+            lastReadAt: { [livreur.id]: msgAt, [client.id]: null },
+            lastMessageAt: msgAt,
+            createdAt: msgAt,
+            updatedAt: msgAt,
+          },
+        ]
+      : [];
+  const messages: MockMessage[] =
+    livreur && client && conversations[0]
+      ? [
+          {
+            id: 1,
+            conversationId: conversations[0].id,
+            senderId: livreur.id,
+            body: "Bonjour, je suis en route pour votre livraison.",
+            createdAt: msgAt,
+          },
+        ]
+      : [];
+
   return structuredClone({
     users: MOCK_USERS.map((u) => ({ ...u, createdAt: u.createdAt ?? seededAt })),
     parcels: MOCK_PARCELS.map((p) => ({
@@ -214,8 +251,8 @@ function seedDb(): MockDb {
     agencies,
     statusCategories: seedStatusCategories(),
     deliveryRoutes: seedDeliveryRoutes(),
-    conversations: [],
-    messages: [],
+    conversations,
+    messages,
     calls: [],
   });
 }
@@ -413,6 +450,10 @@ function isStaff(actor: Actor) {
   return STAFF.includes(actor.role);
 }
 
+function isMoneyStaff(actor: Actor) {
+  return MONEY_STAFF.includes(actor.role);
+}
+
 function record(body: unknown): Record<string, unknown> {
   return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 }
@@ -456,6 +497,18 @@ function agencyIdForGov(governorate: string): number | null {
   return hit?.id ?? null;
 }
 
+function recipientClientForPhone(phone: string) {
+  return (
+    db().users.find(
+      (u) =>
+        u.role === "CLIENT" &&
+        u.phone === phone &&
+        u.isActive &&
+        (u.approvalStatus ?? "APPROVED") === "APPROVED",
+    ) ?? null
+  );
+}
+
 function enrichParcel(parcel: MockParcel): MockParcel {
   const sender = parcel.senderId
     ? db().users.find((u) => u.id === parcel.senderId)
@@ -463,6 +516,7 @@ function enrichParcel(parcel: MockParcel): MockParcel {
   const driver = parcel.driverId
     ? db().users.find((u) => u.id === parcel.driverId)
     : null;
+  const recipientUser = recipientClientForPhone(parcel.phone);
   return {
     ...parcel,
     agency: agencyRef(parcel.agencyId),
@@ -477,13 +531,67 @@ function enrichParcel(parcel: MockParcel): MockParcel {
     driver: driver
       ? { id: driver.id, name: driver.name, phone: driver.phone }
       : parcel.driver,
+    recipientUserId: recipientUser?.id ?? null,
+    recipientUser: recipientUser
+      ? {
+          id: recipientUser.id,
+          name: recipientUser.name,
+          phone: recipientUser.phone,
+        }
+      : null,
   };
+}
+
+function hasSharedDelivery(
+  livreurId: number,
+  clientPhone: string,
+  parcelId?: number | null,
+) {
+  return db().parcels.some(
+    (p) =>
+      p.status !== "SUPPRIME" &&
+      p.driverId === livreurId &&
+      p.phone === clientPhone &&
+      (parcelId == null || p.id === parcelId),
+  );
+}
+
+function assertCanMessagePeer(
+  actor: Actor,
+  peer: MockUser,
+  parcelId?: number | null,
+) {
+  const isLivreurClient =
+    (actor.role === "LIVREUR" && peer.role === "CLIENT") ||
+    (actor.role === "CLIENT" && peer.role === "LIVREUR");
+  if (!isLivreurClient) return;
+
+  const livreurId = actor.role === "LIVREUR" ? actor.id : peer.id;
+  const clientPhone =
+    actor.role === "CLIENT" ? actor.phone : peer.phone;
+  if (!clientPhone) {
+    throw new MockHttpError(
+      403,
+      "Compte client sans téléphone — messagerie indisponible",
+    );
+  }
+  if (!hasSharedDelivery(livreurId, clientPhone, parcelId)) {
+    throw new MockHttpError(
+      403,
+      "Messagerie réservée aux colis partagés livreur ↔ client",
+    );
+  }
 }
 
 function scopeParcels(actor: Actor): MockParcel[] {
   const live = db().parcels.filter((p) => p.status !== "SUPPRIME");
   let list: MockParcel[];
-  if (isStaff(actor) || actor.role === "MAGASINIER" || actor.role === "PICKUP") {
+  if (
+    isStaff(actor) ||
+    actor.role === "FINANCE" ||
+    actor.role === "MAGASINIER" ||
+    actor.role === "PICKUP"
+  ) {
     list = live;
   } else if (AGENCY_ROLES.includes(actor.role)) {
     const agencyId = actor.agencyId;
@@ -855,7 +963,9 @@ function statusCounts(actor: Actor): StatusCard[] {
 
 function senderPayments(actor: Actor) {
   const payments = db().payments;
-  return isStaff(actor) ? payments : payments.filter((p) => p.sender?.email === actor.email);
+  return isMoneyStaff(actor)
+    ? payments
+    : payments.filter((p) => p.sender?.email === actor.email);
 }
 
 function analytics(actor: Actor) {
@@ -1090,6 +1200,7 @@ const ALL_ROLES: AppRole[] = [
   "SUPPORT",
   "PICKUP",
   "MAGASINIER",
+  "FINANCE",
   "EXPEDITEUR",
   "LIVREUR",
   "CLIENT",
@@ -1097,6 +1208,7 @@ const ALL_ROLES: AppRole[] = [
 
 const ADMIN_CREATABLE: AppRole[] = [
   "ADMIN",
+  "FINANCE",
   "SUPPORT",
   "PICKUP",
   "MAGASINIER",
@@ -1374,10 +1486,11 @@ function notificationsFor(actor: Actor): AppNotification[] {
       at: t.updatedAt ?? t.createdAt,
       targetId: t.id,
     }));
+  const money = isMoneyStaff(actor);
   const payments: AppNotification[] =
-    staff || actor.role === "EXPEDITEUR"
+    money || actor.role === "EXPEDITEUR"
       ? senderPayments(actor)
-          .filter((p) => (staff ? p.status === "EN_DEMANDE" : p.status !== "EN_DEMANDE"))
+          .filter((p) => (money ? p.status === "EN_DEMANDE" : p.status !== "EN_DEMANDE"))
           .map((p) => ({
             id: `payment-${p.id}-${p.status}`,
             kind: "payment" as const,
@@ -1522,6 +1635,7 @@ const ALL: AppRole[] = [
   "SUPPORT",
   "PICKUP",
   "MAGASINIER",
+  "FINANCE",
   "EXPEDITEUR",
   "LIVREUR",
   "CLIENT",
@@ -1769,17 +1883,51 @@ const ROUTES: Route[] = [
     roles: ALL,
     handler: ({ actor, body }) => {
       const q = (str(body.q) ?? "").toLowerCase().trim();
-      return db()
-        .users.filter((u) => {
-          if (u.id === actor.id || !u.isActive) return false;
-          if ((u.approvalStatus ?? "APPROVED") !== "APPROVED") return false;
-          if (!q) return true;
-          return (
-            u.name.toLowerCase().includes(q) ||
-            u.email.toLowerCase().includes(q) ||
-            (u.phone ?? "").includes(q)
-          );
-        })
+      const matchesQ = (u: MockUser) =>
+        !q ||
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.phone ?? "").includes(q);
+
+      let candidates = db().users.filter(
+        (u) =>
+          u.id !== actor.id &&
+          u.isActive &&
+          (u.approvalStatus ?? "APPROVED") === "APPROVED",
+      );
+
+      if (actor.role === "LIVREUR") {
+        const phones = new Set(
+          db()
+            .parcels.filter(
+              (p) =>
+                p.driverId === actor.id &&
+                p.status !== "SUPPRIME" &&
+                p.phone,
+            )
+            .map((p) => p.phone),
+        );
+        candidates = candidates.filter(
+          (u) => u.role === "CLIENT" && u.phone && phones.has(u.phone),
+        );
+      } else if (actor.role === "CLIENT") {
+        const driverIds = new Set(
+          db()
+            .parcels.filter(
+              (p) =>
+                p.phone === actor.phone &&
+                p.driverId != null &&
+                p.status !== "SUPPRIME",
+            )
+            .map((p) => p.driverId as number),
+        );
+        candidates = candidates.filter(
+          (u) => u.role === "LIVREUR" && driverIds.has(u.id),
+        );
+      }
+
+      return candidates
+        .filter(matchesQ)
         .map(asCommsPerson)
         .sort((a, b) => a.name.localeCompare(b.name, "fr"))
         .slice(0, 40);
@@ -1800,6 +1948,50 @@ const ROUTES: Route[] = [
         }),
   },
   {
+    method: "GET",
+    pattern: /^\/conversations\/peer-for-parcel\/(\d+)$/,
+    roles: ["LIVREUR", "CLIENT"],
+    handler: ({ actor, params }) => {
+      const parcelId = Number(params[0]);
+      const parcel = db().parcels.find(
+        (p) => p.id === parcelId && p.status !== "SUPPRIME",
+      );
+      if (!parcel) throw new MockHttpError(404, "Parcel not found");
+      if (actor.role === "LIVREUR") {
+        if (parcel.driverId !== actor.id) throw new MockHttpError(403, "Accès refusé");
+        const peer = recipientClientForPhone(parcel.phone);
+        if (!peer) {
+          throw new MockHttpError(
+            404,
+            "Aucun compte client Umbrella pour ce destinataire",
+          );
+        }
+        return {
+          parcelId: parcel.id,
+          parcelCode: parcel.code,
+          peer: asCommsPerson(peer),
+        };
+      }
+      if (parcel.phone !== actor.phone) throw new MockHttpError(403, "Accès refusé");
+      if (!parcel.driverId) {
+        throw new MockHttpError(404, "Aucun livreur assigné à ce colis");
+      }
+      const peer = db().users.find(
+        (u) =>
+          u.id === parcel.driverId &&
+          u.role === "LIVREUR" &&
+          u.isActive &&
+          (u.approvalStatus ?? "APPROVED") === "APPROVED",
+      );
+      if (!peer) throw new MockHttpError(404, "Livreur introuvable");
+      return {
+        parcelId: parcel.id,
+        parcelCode: parcel.code,
+        peer: asCommsPerson(peer),
+      };
+    },
+  },
+  {
     method: "POST",
     pattern: /^\/conversations$/,
     roles: ALL,
@@ -1816,6 +2008,10 @@ const ROUTES: Route[] = [
       );
       if (!peer) throw new MockHttpError(404, "User not found");
       const parcelId = num(body.parcelId) ?? null;
+      if (parcelId != null && !db().parcels.some((p) => p.id === parcelId)) {
+        throw new MockHttpError(404, "Parcel not found");
+      }
+      assertCanMessagePeer(actor, peer, parcelId);
       const store = db();
       let existing = store.conversations.find(
         (c) =>
@@ -2085,7 +2281,7 @@ const ROUTES: Route[] = [
   {
     method: "GET",
     pattern: /^\/payments$/,
-    roles: SENDERS,
+    roles: [...MONEY_STAFF, "EXPEDITEUR"] as AppRole[],
     handler: ({ actor }) => senderPayments(actor),
   },
   {
@@ -2097,7 +2293,7 @@ const ROUTES: Route[] = [
   {
     method: "PATCH",
     pattern: /^\/payments\/(\d+)\/status$/,
-    roles: STAFF,
+    roles: MONEY_STAFF,
     handler: ({ actor, params, body }) => updatePaymentStatus(actor, Number(params[0]), body),
   },
   {
@@ -2394,6 +2590,7 @@ const ROUTES: Route[] = [
     roles: [
       "SUPER_ADMIN",
       "ADMIN",
+      "FINANCE",
       "CHEF_AGENCE",
       "SUPPORT",
       "PICKUP",
@@ -2402,11 +2599,11 @@ const ROUTES: Route[] = [
     ],
     handler: ({ actor }) => analytics(actor),
   },
-  { method: "GET", pattern: /^\/cod$/, roles: STAFF, handler: () => codPayload() },
+  { method: "GET", pattern: /^\/cod$/, roles: MONEY_STAFF, handler: () => codPayload() },
   {
     method: "POST",
     pattern: /^\/cod\/settle$/,
-    roles: STAFF,
+    roles: MONEY_STAFF,
     handler: ({ actor, body }) => settleCod(actor, body),
   },
   {

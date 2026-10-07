@@ -46,9 +46,11 @@ function formatTime(iso: string) {
 export function MessagesInbox({
   initialPeerUserId,
   initialParcelId,
+  autoStartCall = false,
 }: {
   initialPeerUserId?: number;
   initialParcelId?: number;
+  autoStartCall?: boolean;
 } = {}) {
   const { session } = useAuth();
   const toast = useToast();
@@ -65,9 +67,12 @@ export function MessagesInbox({
   const [directory, setDirectory] = useState<CommsPerson[]>([]);
   const [typingPeer, setTypingPeer] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<number>>(new Set());
+  const [callArmed, setCallArmed] = useState(autoStartCall);
 
   const token = session?.accessToken;
   const meId = session?.user.id;
+  const role = session?.user.role;
+  const peerChatOnly = role === "LIVREUR" || role === "CLIENT";
 
   const reloadInbox = useCallback(async () => {
     if (!token) return;
@@ -126,6 +131,14 @@ export function MessagesInbox({
       toast.error("Messages", errorText(err)),
     );
   }, [activeId, loadMessages, toast]);
+
+  useEffect(() => {
+    if (!callArmed || activeId == null || phase !== "idle") return;
+    setCallArmed(false);
+    void startCall(activeId).catch((err) =>
+      toast.error("Appel", errorText(err)),
+    );
+  }, [activeId, callArmed, phase, startCall, toast]);
 
   const { emit, connected } = useCommsSocket({
     onMessageNew: (payload) => {
@@ -240,7 +253,13 @@ export function MessagesInbox({
     <div className="space-y-6">
       <PageHeader
         title="Messages"
-        description="Messagerie temps réel et appels audio Umbrella."
+        description={
+          peerChatOnly
+            ? role === "LIVREUR"
+              ? "Chat et appels directs avec vos clients de livraison."
+              : "Chat et appels directs avec votre livreur."
+            : "Messagerie temps réel et appels audio Umbrella."
+        }
         actions={
           <div className="flex items-center gap-2">
             <Badge tone={connected ? "success" : "warning"}>
@@ -271,7 +290,11 @@ export function MessagesInbox({
               <EmptyState
                 icon={MessageSquare}
                 title="Aucune conversation"
-                description="Démarrez un fil avec un utilisateur Umbrella."
+                description={
+                  peerChatOnly
+                    ? "Ouvrez un colis pour contacter l’autre partie, ou créez un fil via Nouveau."
+                    : "Démarrez un fil avec un utilisateur Umbrella."
+                }
               />
             </div>
           ) : (

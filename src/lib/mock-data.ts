@@ -156,6 +156,16 @@ export const MOCK_USERS: MockUser[] = [
     approvalStatus: "APPROVED",
     agencyId: 1,
   },
+  {
+    id: 11,
+    name: "Finance Umbrella",
+    email: "finance@umbrella.tn",
+    role: "FINANCE",
+    phone: "24000001",
+    password: "Finance@12345",
+    isActive: true,
+    approvalStatus: "APPROVED",
+  },
 ];
 
 export const MOCK_AGENCIES: Agency[] = [
