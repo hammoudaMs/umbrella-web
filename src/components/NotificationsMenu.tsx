@@ -26,10 +26,30 @@ const KIND_ICON: Record<NotificationKind, typeof Bell> = {
   payment: Wallet,
 };
 
-const PARCEL_DETAIL_PORTALS: AppRole[] = ["SUPER_ADMIN", "ADMIN", "EXPEDITEUR"];
+const PARCEL_DETAIL_PORTALS: AppRole[] = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "EXPEDITEUR",
+  "LIVREUR",
+  "MAGASINIER",
+  "CHEF_AGENCE",
+  "PICKUP",
+  "SUPPORT",
+];
 
 function targetHref(item: AppNotification, role: AppRole, prefix: string): string {
-  if (item.kind === "ticket") return role === "LIVREUR" ? prefix : `${prefix}/tickets`;
+  if (item.kind === "ticket") {
+    if (
+      item.targetId &&
+      (role === "LIVREUR" || role === "MAGASINIER") &&
+      item.id.startsWith("relance-")
+    ) {
+      return `${prefix}/parcels/${item.targetId}`;
+    }
+    if (role === "LIVREUR") return prefix;
+    if (role === "MAGASINIER") return `${prefix}/parcels`;
+    return `${prefix}/tickets`;
+  }
   if (item.kind === "payment") return `${prefix}/payments`;
   if (item.targetId && PARCEL_DETAIL_PORTALS.includes(role)) {
     return `${prefix}/parcels/${item.targetId}`;

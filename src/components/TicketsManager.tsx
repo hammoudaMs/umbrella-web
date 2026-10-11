@@ -23,7 +23,15 @@ import {
   trClass,
   type BadgeTone,
 } from "@/components/ui";
-import type { Parcel, Ticket, TicketStatus } from "@/lib/domain";
+import {
+  canOpenParcelTicket,
+  formatTnd,
+  TICKET_KIND_LABEL,
+  type Parcel,
+  type Ticket,
+  type TicketKind,
+  type TicketStatus,
+} from "@/lib/domain";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
 
@@ -41,6 +49,12 @@ const STATUS_TONE: Record<TicketStatus, BadgeTone> = {
   FERME: "neutral",
 };
 
+const KIND_TONE: Record<TicketKind, BadgeTone> = {
+  GENERAL: "neutral",
+  CHANGEMENT_PRIX: "gold",
+  RELANCE: "info",
+};
+
 const TICKET_SORT = {
   title: (t: Ticket) => t.title,
   parcel: (t: Ticket) => t.parcel?.code ?? "",
@@ -53,9 +67,14 @@ type Filter = "ALL" | TicketStatus;
 export function TicketsManager({
   canCreate = true,
   canResolve = false,
+  allowParcelKinds = false,
+  defaultParcelId,
 }: {
   canCreate?: boolean;
   canResolve?: boolean;
+  /** Expéditeur / support / admin — changement prix & relance. */
+  allowParcelKinds?: boolean;
+  defaultParcelId?: number;
 }) {
   const request = useApi();
   const toast = useToast();
@@ -65,10 +84,21 @@ export function TicketsManager({
   const parcels = useMemo(() => parcelData ?? [], [parcelData]);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [query, setQuery] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(defaultParcelId));
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Ticket | null>(null);
+  const [kind, setKind] = useState<TicketKind>(
+    allowParcelKinds && defaultParcelId ? "RELANCE" : "GENERAL",
+  );
+  const [parcelId, setParcelId] = useState(
+    defaultParcelId ? String(defaultParcelId) : "",
+  );
+
+  const eligibleParcels = useMemo(() => {
+    if (!allowParcelKinds || kind === "GENERAL") return parcels;
+    return parcels.filter((p) => canOpenParcelTicket(p));
+  }, [parcels, allowParcelKinds, kind]);
 
   const counts = useMemo(
     () => ({
@@ -86,7 +116,14 @@ export function TicketsManager({
       (t) =>
         (filter === "ALL" || t.status === filter) &&
         (!q ||
-          [t.title, t.description, t.parcel?.code, t.createdBy?.name]
+          [
+            t.title,
+            t.description,
+            t.kind,
+            TICKET_KIND_LABEL[t.kind ?? "GENERAL"],
+            t.parcel?.code,
+            t.createdBy?.name,
+          ]
             .join(" ")
             .toLowerCase()
             .includes(q)),
@@ -101,15 +138,33 @@ export function TicketsManager({
   async function onCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    const parcelId = Number(form.get("parcelId"));
+    const selectedParcelId = Number(form.get("parcelId") || parcelId);
+    const requestedPriceRaw = String(form.get("requestedPrice") ?? "").trim();
     setSaving(true);
     try {
-      const ticket = await request<Ticket>("/tickets", "POST", {
-        title: String(form.get("title") ?? "").trim(),
+      const body: Record<string, unknown> = {
+        kind,
         description: String(form.get("description") ?? "").trim() || undefined,
-        parcelId: parcelId || undefined,
-      });
+        parcelId: selectedParcelId || undefined,
+      };
+      if (kind === "GENERAL") {
+        body.title = String(form.get("title") ?? "").trim();
+      } else {
+        const customTitle = String(form.get("title") ?? "").trim();
+        if (customTitle) body.title = customTitle;
+        if (!selectedParcelId) {
+          throw new Error("Sélectionnez un colis");
+        }
+      }
+      if (kind === "CHANGEMENT_PRIX") {
+        const price = Number(requestedPriceRaw.replace(",", "."));
+        if (!(price > 0)) throw new Error("Nouveau prix invalide");
+        body.requestedPrice = price;
+      }
+      const ticket = await request<Ticket>("/tickets", "POST", body);
       setCreating(false);
+      setKind("GENERAL");
+      setParcelId("");
       toast.success("Ticket ouvert", `#${ticket.id} · ${ticket.title}`);
       await reload();
     } catch (err) {
@@ -123,7 +178,13 @@ export function TicketsManager({
     setBusyId(ticket.id);
     try {
       await request(`/tickets/${ticket.id}/status`, "PATCH", { status });
-      toast.success(`Ticket #${ticket.id} ${STATUS_LABEL[status].toLowerCase()}`);
+      const extra =
+        status === "RESOLU" && ticket.kind === "CHANGEMENT_PRIX"
+          ? " · prix appliqué"
+          : "";
+      toast.success(
+        `Ticket #${ticket.id} ${STATUS_LABEL[status].toLowerCase()}${extra}`,
+      );
       setSelected(null);
       await reload();
     } catch (err) {
@@ -145,7 +206,7 @@ export function TicketsManager({
             loading={busy}
             onClick={() => void setStatus(ticket, "RESOLU")}
           >
-            Résoudre
+            {ticket.kind === "CHANGEMENT_PRIX" ? "Résoudre & appliquer" : "Résoudre"}
           </Button>
         ) : null}
         {ticket.status !== "FERME" ? (
@@ -163,11 +224,17 @@ export function TicketsManager({
     );
   }
 
+  const ticketKind = (t: Ticket): TicketKind => t.kind ?? "GENERAL";
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Support"
-        description={`${counts.EN_COURS} ticket(s) en cours · ${tickets.length} au total`}
+        description={
+          allowParcelKinds
+            ? "Relance et changement de prix après sortie expéditeur, jusqu’au virement."
+            : `${counts.EN_COURS} ticket(s) en cours · ${tickets.length} au total`
+        }
         actions={
           canCreate ? (
             <Button icon={Plus} onClick={() => setCreating(true)}>
@@ -196,7 +263,7 @@ export function TicketsManager({
             <SearchInput
               value={query}
               onChange={setQuery}
-              placeholder="Sujet, colis, auteur…"
+              placeholder="Sujet, type, colis…"
               className="w-full md:w-64"
             />
           </>
@@ -265,14 +332,28 @@ export function TicketsManager({
                       onClick={() => setSelected(t)}
                       className="text-left"
                     >
-                      <p className="font-semibold text-ops-ink hover:text-ops-accent">
-                        #{t.id} · {t.title}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={KIND_TONE[ticketKind(t)]} className="text-[10px]">
+                          {TICKET_KIND_LABEL[ticketKind(t)]}
+                        </Badge>
+                        <p className="font-semibold text-ops-ink hover:text-ops-accent">
+                          #{t.id} · {t.title}
+                        </p>
+                      </div>
+                      {t.requestedPrice != null ? (
+                        <p className="mt-0.5 text-xs font-semibold text-ops-accent">
+                          Prix demandé : {formatTnd(t.requestedPrice)}
+                        </p>
+                      ) : null}
                       {t.description ? (
-                        <p className="max-w-md truncate text-xs text-ops-ink/50">{t.description}</p>
+                        <p className="max-w-md truncate text-xs text-ops-ink/50">
+                          {t.description}
+                        </p>
                       ) : null}
                       {t.createdBy ? (
-                        <p className="text-[11px] text-ops-ink/50">par {t.createdBy.name}</p>
+                        <p className="text-[11px] text-ops-ink/50">
+                          par {t.createdBy.name}
+                        </p>
                       ) : null}
                     </button>
                   </td>
@@ -284,7 +365,9 @@ export function TicketsManager({
                       {STATUS_LABEL[t.status]}
                     </Badge>
                   </td>
-                  <td className={`${tdClass} hidden whitespace-nowrap text-ops-ink/50 md:table-cell`}>
+                  <td
+                    className={`${tdClass} hidden whitespace-nowrap text-ops-ink/50 md:table-cell`}
+                  >
                     {new Date(t.createdAt).toLocaleDateString("fr-TN")}
                   </td>
                   <td className={tdClass}>{actions(t)}</td>
@@ -299,7 +382,11 @@ export function TicketsManager({
         open={creating}
         onClose={() => setCreating(false)}
         title="Nouveau ticket"
-        description="Décrivez le problème, l'équipe support vous répond rapidement."
+        description={
+          allowParcelKinds
+            ? "Relance / prix : après sortie expéditeur, jusqu’au virement."
+            : "Décrivez le problème, l'équipe support vous répond rapidement."
+        }
         size="md"
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -313,21 +400,84 @@ export function TicketsManager({
         }
       >
         <form id="ticket-create-form" onSubmit={onCreate} className="space-y-4">
-          <TextField name="title" label="Sujet" required minLength={3} maxLength={120} />
-          <SelectField name="parcelId" label="Colis concerné" defaultValue="">
-            <option value="">Aucun colis précis</option>
-            {parcels.map((p) => (
+          {allowParcelKinds ? (
+            <SelectField
+              name="kind"
+              label="Type"
+              value={kind}
+              onChange={(e) => {
+                const next = e.target.value as TicketKind;
+                setKind(next);
+                if (next !== "GENERAL" && !parcelId && defaultParcelId) {
+                  setParcelId(String(defaultParcelId));
+                }
+              }}
+            >
+              <option value="GENERAL">Général</option>
+              <option value="RELANCE">Relance colis</option>
+              <option value="CHANGEMENT_PRIX">Changement de prix</option>
+            </SelectField>
+          ) : null}
+          {kind === "GENERAL" ? (
+            <TextField
+              name="title"
+              label="Sujet"
+              required
+              minLength={3}
+              maxLength={120}
+            />
+          ) : (
+            <TextField
+              name="title"
+              label="Sujet (optionnel)"
+              maxLength={120}
+              placeholder={TICKET_KIND_LABEL[kind]}
+            />
+          )}
+          <SelectField
+            name="parcelId"
+            label={kind === "GENERAL" ? "Colis concerné" : "Colis"}
+            required={kind !== "GENERAL"}
+            value={parcelId}
+            onChange={(e) => setParcelId(e.target.value)}
+          >
+            <option value="">
+              {kind === "GENERAL" ? "Aucun colis précis" : "Choisir un colis…"}
+            </option>
+            {(kind === "GENERAL" ? parcels : eligibleParcels).map((p) => (
               <option key={p.id} value={p.id}>
-                {p.code ?? `#${p.id}`} · {p.recipientName}
+                {p.code ?? `#${p.id}`} · {p.recipientName} · {formatTnd(p.price)}
               </option>
             ))}
           </SelectField>
+          {kind === "CHANGEMENT_PRIX" ? (
+            <TextField
+              name="requestedPrice"
+              label="Nouveau prix (TND)"
+              type="number"
+              inputMode="decimal"
+              step="0.001"
+              min="0.001"
+              required
+            />
+          ) : null}
+          {kind !== "GENERAL" && eligibleParcels.length === 0 ? (
+            <p className="rounded-xl bg-ops-ink/[0.04] px-3 py-2 text-xs text-ops-ink/55">
+              Aucun colis éligible (sortie expéditeur → avant virement).
+            </p>
+          ) : null}
           <TextAreaField
             name="description"
             label="Description"
             rows={4}
             maxLength={1000}
-            placeholder="Que s'est-il passé ?"
+            placeholder={
+              kind === "RELANCE"
+                ? "Motif de la relance…"
+                : kind === "CHANGEMENT_PRIX"
+                  ? "Pourquoi modifier le prix ?"
+                  : "Que s'est-il passé ?"
+            }
           />
         </form>
       </Modal>
@@ -342,12 +492,30 @@ export function TicketsManager({
       >
         {selected ? (
           <dl className="space-y-4 text-sm">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={KIND_TONE[ticketKind(selected)]}>
+                {TICKET_KIND_LABEL[ticketKind(selected)]}
+              </Badge>
               <Badge tone={STATUS_TONE[selected.status]} dot>
                 {STATUS_LABEL[selected.status]}
               </Badge>
-              {selected.parcel?.code ? <Badge tone="info">{selected.parcel.code}</Badge> : null}
+              {selected.parcel?.code ? (
+                <Badge tone="info">{selected.parcel.code}</Badge>
+              ) : null}
             </div>
+            {selected.requestedPrice != null ? (
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-ops-ink/50">
+                  Prix demandé
+                </dt>
+                <dd className="mt-1 font-semibold text-ops-accent">
+                  {formatTnd(selected.requestedPrice)}
+                  {selected.parcel?.price != null
+                    ? ` (actuel ${formatTnd(selected.parcel.price)})`
+                    : ""}
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-wide text-ops-ink/50">
                 Description
@@ -361,7 +529,9 @@ export function TicketsManager({
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-ops-ink/50">
                   Auteur
                 </dt>
-                <dd className="mt-1 text-ops-ink">{selected.createdBy?.name ?? "—"}</dd>
+                <dd className="mt-1 text-ops-ink">
+                  {selected.createdBy?.name ?? "—"}
+                </dd>
               </div>
               <div>
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-ops-ink/50">

@@ -19,6 +19,7 @@ import { PORTAL_BY_ROLE, ROLE_LABEL, type AppRole } from "@/lib/roles";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationsMenu } from "@/components/NotificationsMenu";
 import { MobileTabBar } from "@/components/MobileTabBar";
+import { SupportBotWidget } from "@/components/SupportBotWidget";
 import { useConfirm, useToast } from "@/components/Feedback";
 import { Avatar } from "@/components/ui";
 
@@ -360,6 +361,8 @@ export function PortalShell({
           </div>
         </div>
       ) : null}
+
+      {session?.accessToken ? <SupportBotWidget /> : null}
     </div>
   );
 }

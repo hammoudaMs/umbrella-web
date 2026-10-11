@@ -207,12 +207,12 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
     );
   }
 
-  function statusSelect(p: Parcel) {
+  function statusSelect(p: Parcel, className?: string) {
     const options = selectableStatuses(p.status, role);
     return (
       <select
         aria-label={`Statut de ${p.code ?? p.id}`}
-        className={selectClass}
+        className={cn(selectClass, className)}
         value={p.status}
         disabled={busyId === p.id}
         onChange={(e) => {
@@ -345,66 +345,103 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
               <EmptyState icon={Truck} title="Aucun colis" description="Rien à dispatcher pour ce filtre." />
             </div>
           ) : (
-            <table className={tableClass}>
-              <thead className={theadClass}>
-                <tr>
-                  <SortableTh
-                    label="Colis"
-                    column="code"
-                    activeKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  <SortableTh
-                    label="Destinataire"
-                    column="recipientName"
-                    activeKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  <SortableTh
-                    label="Statut"
-                    column="status"
-                    activeKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  {staffMode ? (
+            <>
+              <ul className="divide-y divide-ops-card md:hidden">
+                {visible.map((p) => (
+                  <li key={p.id} className="space-y-3 px-4 py-3.5">
+                    <div className="min-w-0">
+                      <p className="font-mono text-[13px] font-bold text-ops-ink">
+                        {p.code ?? `#${p.id}`}
+                      </p>
+                      {showModes ? (
+                        <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ops-ink/40">
+                          {p.mode === "INTERNAL" ? "Umbrella" : "Navex"}
+                        </p>
+                      ) : null}
+                      <p className="mt-1.5 text-[15px] font-semibold text-ops-ink">
+                        {p.recipientName}
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-ops-ink/45">
+                        {p.city}, {p.governorate}
+                      </p>
+                      <div className="mt-2">
+                        <StatusBadge status={p.status} />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      {staffMode ? driverSelect(p, "h-10 w-full text-sm") : null}
+                      {statusSelect(p, "h-10 w-full text-sm")}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <table className={cn(tableClass, "hidden md:table")}>
+                <thead className={theadClass}>
+                  <tr>
                     <SortableTh
-                      label="Livreur"
-                      column="driver"
+                      label="Colis"
+                      column="code"
                       activeKey={sortKey}
                       sortDir={sortDir}
                       onSort={toggleSort}
                     />
-                  ) : null}
-                  <th className={thClass}>Changer le statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((p) => (
-                  <tr key={p.id} className={trClass}>
-                    <td className={tdClass}>
-                      <p className="font-mono text-xs font-semibold text-ops-ink">{p.code}</p>
-                      {showModes ? (
-                        <p className="text-[10px] font-semibold uppercase text-ops-ink/50">{p.mode}</p>
-                      ) : null}
-                    </td>
-                    <td className={tdClass}>
-                      <p className="font-medium text-ops-ink">{p.recipientName}</p>
-                      <p className="text-xs text-ops-ink/50">
-                        {p.city}, {p.governorate}
-                      </p>
-                    </td>
-                    <td className={tdClass}>
-                      <StatusBadge status={p.status} />
-                    </td>
-                    {staffMode ? <td className={tdClass}>{driverSelect(p)}</td> : null}
-                    <td className={tdClass}>{statusSelect(p)}</td>
+                    <SortableTh
+                      label="Destinataire"
+                      column="recipientName"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Statut"
+                      column="status"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    {staffMode ? (
+                      <SortableTh
+                        label="Livreur"
+                        column="driver"
+                        activeKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    ) : null}
+                    <th className={thClass}>Changer le statut</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {visible.map((p) => (
+                    <tr key={p.id} className={trClass}>
+                      <td className={tdClass}>
+                        <p className="font-mono text-xs font-semibold text-ops-ink">
+                          {p.code}
+                        </p>
+                        {showModes ? (
+                          <p className="text-[10px] font-semibold uppercase text-ops-ink/50">
+                            {p.mode}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className={tdClass}>
+                        <p className="font-medium text-ops-ink">{p.recipientName}</p>
+                        <p className="text-xs text-ops-ink/50">
+                          {p.city}, {p.governorate}
+                        </p>
+                      </td>
+                      <td className={tdClass}>
+                        <StatusBadge status={p.status} />
+                      </td>
+                      {staffMode ? (
+                        <td className={tdClass}>{driverSelect(p)}</td>
+                      ) : null}
+                      <td className={tdClass}>{statusSelect(p)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </TableCard>
       )}

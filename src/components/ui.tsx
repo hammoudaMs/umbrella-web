@@ -403,13 +403,16 @@ export function StatusBadge({ status, className }: { status: string; className?:
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+        "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-tight",
         className,
       )}
       style={{ backgroundColor: tone.bg, color: tone.ink }}
+      title={meta.label}
     >
-      <span aria-hidden>{meta.emoji}</span>
-      {meta.label}
+      <span aria-hidden className="shrink-0">
+        {meta.emoji}
+      </span>
+      <span className="min-w-0">{meta.label}</span>
     </span>
   );
 }

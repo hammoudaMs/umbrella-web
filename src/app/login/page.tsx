@@ -77,12 +77,13 @@ function LoginForm() {
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <TextField
-          label="Email"
-          type="email"
+          label="Email ou téléphone client"
+          type="text"
           autoComplete="username"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          hint="Client : 8 chiffres reçus par SMS, ou email."
         />
         <TextField
           label="Mot de passe"

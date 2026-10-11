@@ -5,9 +5,11 @@ import type {
   DeliveryMode,
   DeliveryRoute,
   PaymentStatus,
+  TicketKind,
   TicketStatus,
   TimelineEntry,
 } from "@/lib/domain";
+import { canOpenParcelTicket } from "@/lib/domain";
 import type { Agency } from "@/lib/domain";
 import type {
   CallSession,
@@ -35,21 +37,53 @@ import {
 } from "@/lib/parcel-transitions";
 import { STATUS_ORDER } from "@/lib/portal-nav";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
+import type { PickupManifest, ReturnLot } from "@/lib/domain";
 import {
   DEFAULT_STATUS_CATEGORIES,
   isStatusCategoryIcon,
   type StatusCategory,
   type StatusCategoryIcon,
 } from "@/lib/status-categories";
-import { STATUS_META, TUNISIA_GOVERNORATES } from "@/lib/status-meta";
+import {
+  RETURN_STATUSES,
+  STATUS_META,
+  TUNISIA_GOVERNORATES,
+  type StatusKey,
+} from "@/lib/status-meta";
 
 /**
  * Browser-persisted demo backend. Mirrors the NestJS API contract (routes, scoping, rules)
  * so the UI behaves the same with NEXT_PUBLIC_USE_MOCK=true or against umbrella/api.
  */
 
-const STORAGE_KEY = "umbrella.mock-db.v10";
+const STORAGE_KEY = "umbrella.mock-db.v12";
 export const MOCK_RESET_EVENT = "umbrella:mock-db-reset";
+const MAX_RETURN_LOT = 20;
+const MAX_PICKUP_MANIFEST = 20;
+
+type MockReturnLot = {
+  id: number;
+  code: string;
+  senderId: number;
+  status: "OPEN" | "CLOSED";
+  parcelIds: number[];
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type MockPickupManifest = {
+  id: number;
+  code: string;
+  manifestKind: "EN_ATTENTE" | "PRE_ENLEVEMENT";
+  status: "OPEN" | "CLOSED";
+  createdById: number;
+  senderId: number | null;
+  parcelIds: number[];
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type MockConversation = {
   id: number;
@@ -92,6 +126,8 @@ type MockDb = {
   conversations: MockConversation[];
   messages: MockMessage[];
   calls: MockCall[];
+  returnLots: MockReturnLot[];
+  pickupManifests: MockPickupManifest[];
 };
 
 type Actor = {
@@ -127,6 +163,7 @@ const RETURN_STATUSES_LIST = [
 ];
 const DELIVERED = ["LIVRES", "LIVRES_PAYES"];
 const SENDER_EDITABLE = ["EN_ATTENTE", "NON_SERIEUX"];
+const CLIENT_EDITABLE = ["EN_ATTENTE", "A_ENLEVER", "NON_SERIEUX"];
 const RETURN_PREFIX = "RETOUR";
 const ACTIVE_PAYMENT: PaymentStatus[] = ["EN_DEMANDE", "APPROUVE", "PAYE"];
 const PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
@@ -238,6 +275,63 @@ function seedDb(): MockDb {
         ]
       : [];
 
+  const expediteur = MOCK_USERS.find((u) => u.role === "EXPEDITEUR");
+  const pickupUser = MOCK_USERS.find((u) => u.role === "PICKUP");
+  const returnParcelIds = MOCK_PARCELS.filter((p) =>
+    ["UMB-RET-001", "UMB-RET-002", "UMB-RET-003"].includes(p.code),
+  ).map((p) => p.id);
+  const returnLots: MockReturnLot[] =
+    expediteur && returnParcelIds.length
+      ? [
+          {
+            id: 1,
+            code: "UMB-LOT-DEMO1",
+            senderId: expediteur.id,
+            status: "OPEN",
+            parcelIds: returnParcelIds,
+            closedAt: null,
+            createdAt: seededAt,
+            updatedAt: seededAt,
+          },
+        ]
+      : [];
+
+  const attenteParcelIds = MOCK_PARCELS.filter((p) =>
+    ["UMB-ATT-001", "UMB-ATT-002"].includes(p.code),
+  ).map((p) => p.id);
+  const preParcelIds = MOCK_PARCELS.filter((p) => p.code === "UMB-ENL-001").map(
+    (p) => p.id,
+  );
+  const pickupManifests: MockPickupManifest[] = [];
+  if (expediteur && attenteParcelIds.length) {
+    pickupManifests.push({
+      id: 1,
+      code: "UMB-MAT-DEMO1",
+      manifestKind: "EN_ATTENTE",
+      status: "OPEN",
+      createdById: expediteur.id,
+      senderId: expediteur.id,
+      parcelIds: attenteParcelIds,
+      closedAt: null,
+      createdAt: seededAt,
+      updatedAt: seededAt,
+    });
+  }
+  if (pickupUser && expediteur && preParcelIds.length) {
+    pickupManifests.push({
+      id: 2,
+      code: "UMB-MPR-DEMO1",
+      manifestKind: "PRE_ENLEVEMENT",
+      status: "OPEN",
+      createdById: pickupUser.id,
+      senderId: expediteur.id,
+      parcelIds: preParcelIds,
+      closedAt: null,
+      createdAt: seededAt,
+      updatedAt: seededAt,
+    });
+  }
+
   return structuredClone({
     users: MOCK_USERS.map((u) => ({ ...u, createdAt: u.createdAt ?? seededAt })),
     parcels: MOCK_PARCELS.map((p) => ({
@@ -254,6 +348,8 @@ function seedDb(): MockDb {
     conversations,
     messages,
     calls: [],
+    returnLots,
+    pickupManifests,
   });
 }
 
@@ -276,6 +372,8 @@ function isMockDb(value: unknown): value is MockDb {
   if (!Array.isArray(v.conversations)) v.conversations = [];
   if (!Array.isArray(v.messages)) v.messages = [];
   if (!Array.isArray(v.calls)) v.calls = [];
+  if (!Array.isArray(v.returnLots)) v.returnLots = [];
+  if (!Array.isArray(v.pickupManifests)) v.pickupManifests = [];
   const agencies = v.agencies as Agency[];
   const agencyByGov = new Map(
     agencies.map((a) => [a.governorate.toLowerCase(), a.id] as const),
@@ -604,7 +702,11 @@ function scopeParcels(actor: Actor): MockParcel[] {
   } else if (actor.role === "LIVREUR") {
     list = live.filter((p) => p.driverId === actor.id);
   } else if (actor.role === "CLIENT") {
-    list = live.filter((p) => p.phone === actor.phone);
+    const clientPhone = actor.phone.replace(/\D/g, "").slice(-8);
+    list = live.filter((p) => {
+      const digits = p.phone.replace(/\D/g, "").slice(-8);
+      return digits === clientPhone || p.phone === actor.phone;
+    });
   } else {
     list = live.filter((p) => p.senderId === actor.id);
   }
@@ -634,6 +736,13 @@ function ownedOrStaff(actor: Actor, id: number): MockParcel {
   }
   if (actor.role === "EXPEDITEUR" && parcel.senderId === actor.id) {
     return enrichParcel(parcel);
+  }
+  if (actor.role === "CLIENT") {
+    const clientPhone = actor.phone.replace(/\D/g, "").slice(-8);
+    const digits = parcel.phone.replace(/\D/g, "").slice(-8);
+    if (digits === clientPhone || parcel.phone === actor.phone) {
+      return enrichParcel(parcel);
+    }
   }
   throw new MockHttpError(403, "Accès refusé");
 }
@@ -867,6 +976,98 @@ function assertConversationParticipant(actor: Actor, conversationId: number) {
   return c;
 }
 
+function canReadReturnLot(actor: Actor, lot: MockReturnLot) {
+  if (actor.role === "EXPEDITEUR") return lot.senderId === actor.id;
+  return (
+    actor.role === "SUPER_ADMIN" ||
+    actor.role === "ADMIN" ||
+    actor.role === "CHEF_AGENCE" ||
+    actor.role === "MAGASINIER" ||
+    actor.role === "SUPPORT" ||
+    actor.role === "PICKUP" ||
+    actor.role === "LIVREUR"
+  );
+}
+
+function summarizeReturnLot(lot: MockReturnLot): ReturnLot {
+  const sender = db().users.find((u) => u.id === lot.senderId);
+  const parcels = lot.parcelIds
+    .map((id) => db().parcels.find((p) => p.id === id))
+    .filter((p): p is MockParcel => !!p && p.status !== "SUPPRIME")
+    .map((p) => enrichParcel(p));
+  return {
+    kind: "return_lot",
+    id: lot.id,
+    code: lot.code,
+    status: lot.status,
+    senderId: lot.senderId,
+    sender: sender
+      ? { id: sender.id, name: sender.name, email: sender.email }
+      : null,
+    itemCount: parcels.length,
+    closedAt: lot.closedAt,
+    createdAt: lot.createdAt,
+    updatedAt: lot.updatedAt,
+    parcels,
+  };
+}
+
+function findReturnLotByCode(code: string): MockReturnLot | undefined {
+  const normalized = code.trim().toLowerCase();
+  return db().returnLots.find((l) => l.code.toLowerCase() === normalized);
+}
+
+function canReadPickupManifest(actor: Actor, m: MockPickupManifest) {
+  if (actor.role === "EXPEDITEUR") {
+    return m.senderId === actor.id || m.createdById === actor.id;
+  }
+  return (
+    actor.role === "SUPER_ADMIN" ||
+    actor.role === "ADMIN" ||
+    actor.role === "CHEF_AGENCE" ||
+    actor.role === "MAGASINIER" ||
+    actor.role === "SUPPORT" ||
+    actor.role === "PICKUP" ||
+    actor.role === "LIVREUR"
+  );
+}
+
+function summarizePickupManifest(m: MockPickupManifest): PickupManifest {
+  const sender = m.senderId
+    ? db().users.find((u) => u.id === m.senderId)
+    : null;
+  const createdBy = db().users.find((u) => u.id === m.createdById);
+  const parcels = m.parcelIds
+    .map((id) => db().parcels.find((p) => p.id === id))
+    .filter((p): p is MockParcel => !!p && p.status !== "SUPPRIME")
+    .map((p) => enrichParcel(p));
+  return {
+    kind: "pickup_manifest",
+    id: m.id,
+    code: m.code,
+    manifestKind: m.manifestKind,
+    status: m.status,
+    senderId: m.senderId,
+    sender: sender
+      ? { id: sender.id, name: sender.name, email: sender.email }
+      : null,
+    createdById: m.createdById,
+    createdBy: createdBy
+      ? { id: createdBy.id, name: createdBy.name, email: createdBy.email }
+      : null,
+    itemCount: parcels.length,
+    closedAt: m.closedAt,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+    parcels,
+  };
+}
+
+function findPickupManifestByCode(code: string): MockPickupManifest | undefined {
+  const normalized = code.trim().toLowerCase();
+  return db().pickupManifests.find((m) => m.code.toLowerCase() === normalized);
+}
+
 function broadcastMock(event: string, payload: unknown, fromUserId: number) {
   try {
     const ch = new BroadcastChannel("umbrella-comms");
@@ -879,12 +1080,17 @@ function broadcastMock(event: string, payload: unknown, fromUserId: number) {
 
 function createParcel(actor: Actor, dto: Record<string, unknown>) {
   const recipientName = str(dto.recipientName);
-  const phone = str(dto.phone);
+  const rawPhone = str(dto.phone) ?? "";
+  const phoneDigits = rawPhone.replace(/\D/g, "").slice(-8);
+  const phone = /^[0-9]{8}$/.test(phoneDigits) ? phoneDigits : rawPhone;
   const governorate = str(dto.governorate);
   const city = str(dto.city);
   const address = str(dto.address);
   if (!recipientName || recipientName.length < 2 || !phone || !governorate || !city || !address) {
     throw new MockHttpError(400, "Champs obligatoires manquants");
+  }
+  if (!/^[0-9]{8}$/.test(phone)) {
+    throw new MockHttpError(400, "Téléphone destinataire : 8 chiffres");
   }
   const mode: DeliveryMode =
     dto.mode === "INTERNAL" || dto.mode === "EXTERNAL"
@@ -924,6 +1130,49 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
   if (!parcel.agencyId) parcel.agencyId = agencyIdForGov(parcel.governorate);
   pushEvent(parcel, "Colis créé", { status: "EN_ATTENTE", actor });
   db().parcels.unshift(parcel);
+
+  let client = db().users.find(
+    (u) => u.role === "CLIENT" && u.phone === phone,
+  );
+  let tempPassword: string | null = null;
+  if (!client) {
+    tempPassword = Math.random().toString(16).slice(2, 10);
+    client = {
+      id: nextId(db().users),
+      name: recipientName,
+      email: `c${phone}@client.umbrella.tn`,
+      password: tempPassword,
+      role: "CLIENT",
+      phone,
+      isActive: true,
+      approvalStatus: "APPROVED",
+      governorate,
+      city,
+      address,
+      createdAt: at,
+    };
+    db().users.push(client);
+  } else {
+    client.name = recipientName;
+    client.governorate = governorate;
+    client.city = city;
+    client.address = address;
+    client.approvalStatus = "APPROVED";
+    client.isActive = true;
+  }
+  const smsLines = [
+    `[SMS→${phone}] Umbrella: colis ${parcel.code} cree.`,
+    `Login: ${phone} / ${tempPassword ?? "(mdp existant)"}`,
+    `Espace: /client — Parametres pour vos infos.`,
+  ];
+  console.info(smsLines.join(" | "));
+  pushEvent(parcel, "SMS client compte prêt", {
+    comment: tempPassword
+      ? "Compte client créé + SMS (mock)"
+      : "SMS suivi (compte existant, mock)",
+    actor,
+  });
+
   commit();
   return enrichParcel(parcel);
 }
@@ -1036,27 +1285,128 @@ function analytics(actor: Actor) {
 
 function ticketsFor(actor: Actor) {
   const tickets = db().tickets;
-  return isStaff(actor) ? tickets : tickets.filter((t) => t.createdBy?.id === actor.id);
+  return isStaff(actor) || actor.role === "SUPPORT"
+    ? tickets
+    : tickets.filter((t) => t.createdBy?.id === actor.id);
 }
 
 function createTicket(actor: Actor, dto: Record<string, unknown>) {
-  const title = str(dto.title);
-  if (!title || title.length < 3) throw new MockHttpError(400, "Sujet trop court");
+  const kind = (str(dto.kind) as TicketKind | undefined) ?? "GENERAL";
+  if (!["GENERAL", "CHANGEMENT_PRIX", "RELANCE"].includes(kind)) {
+    throw new MockHttpError(400, "Type de ticket invalide");
+  }
   const parcelId = num(dto.parcelId);
-  const parcel = parcelId ? db().parcels.find((p) => p.id === parcelId) : undefined;
+  const parcel = parcelId
+    ? db().parcels.find((p) => p.id === parcelId)
+    : undefined;
   if (parcelId && !parcel) throw new MockHttpError(400, "Colis introuvable");
+
+  if (kind === "GENERAL") {
+    const title = str(dto.title);
+    if (!title || title.length < 3) {
+      throw new MockHttpError(400, "Sujet trop court");
+    }
+    if (
+      parcel &&
+      actor.role === "EXPEDITEUR" &&
+      parcel.senderId !== actor.id
+    ) {
+      throw new MockHttpError(403, "Accès refusé");
+    }
+    const at = nowIso();
+    const ticket: MockTicket = {
+      id: nextId(db().tickets),
+      title,
+      description: str(dto.description) ?? null,
+      kind: "GENERAL",
+      status: "EN_COURS",
+      createdAt: at,
+      updatedAt: at,
+      parcel: parcel
+        ? {
+            id: parcel.id,
+            code: parcel.code,
+            price: parcel.price,
+            status: parcel.status,
+          }
+        : null,
+      createdBy: { id: actor.id, name: actor.name, email: actor.email },
+    };
+    db().tickets.unshift(ticket);
+    commit();
+    return ticket;
+  }
+
+  const creators = ["EXPEDITEUR", "SUPER_ADMIN", "ADMIN", "SUPPORT"];
+  if (!creators.includes(actor.role)) throw new MockHttpError(403, "Accès refusé");
+  if (!parcel) throw new MockHttpError(400, "Un colis est requis");
+  if (actor.role === "EXPEDITEUR" && parcel.senderId !== actor.id) {
+    throw new MockHttpError(403, "Ce colis ne vous appartient pas");
+  }
+  if (!canOpenParcelTicket(parcel)) {
+    throw new MockHttpError(
+      400,
+      "Ticket colis hors fenêtre (sortie → virement)",
+    );
+  }
+
+  let requestedPrice: number | null = null;
+  if (kind === "CHANGEMENT_PRIX") {
+    const price = num(dto.requestedPrice);
+    if (price == null || !(price > 0)) {
+      throw new MockHttpError(400, "Nouveau prix requis");
+    }
+    if (Number(parcel.price) === price) {
+      throw new MockHttpError(400, "Le nouveau prix est identique à l’actuel");
+    }
+    requestedPrice = price;
+  }
+
+  const openSame = db().tickets.find(
+    (t) =>
+      t.parcel?.id === parcel.id &&
+      t.kind === kind &&
+      t.status === "EN_COURS",
+  );
+  if (openSame) {
+    throw new MockHttpError(
+      400,
+      `Un ticket « ${kind} » est déjà ouvert (#${openSame.id})`,
+    );
+  }
+
+  const kindLabel =
+    kind === "RELANCE" ? "Relance colis" : "Changement de prix";
+  const title =
+    str(dto.title) ||
+    `${kindLabel}${parcel.code ? ` · ${parcel.code}` : ""}`;
   const at = nowIso();
   const ticket: MockTicket = {
     id: nextId(db().tickets),
     title,
     description: str(dto.description) ?? null,
+    kind,
+    requestedPrice,
     status: "EN_COURS",
     createdAt: at,
     updatedAt: at,
-    parcel: parcel ? { id: parcel.id, code: parcel.code } : null,
+    parcel: {
+      id: parcel.id,
+      code: parcel.code,
+      price: parcel.price,
+      status: parcel.status,
+    },
     createdBy: { id: actor.id, name: actor.name, email: actor.email },
   };
   db().tickets.unshift(ticket);
+
+  if (kind === "RELANCE") {
+    pushEvent(parcel, "Relance colis", {
+      comment: str(dto.description) || `Ticket #${ticket.id}`,
+      actor,
+    });
+  }
+
   commit();
   return ticket;
 }
@@ -1068,11 +1418,30 @@ function updateTicketStatus(actor: Actor, id: number, dto: Record<string, unknow
   if (!["EN_COURS", "RESOLU", "FERME"].includes(status)) {
     throw new MockHttpError(400, "Statut invalide");
   }
-  if (!isStaff(actor) && ticket.createdBy?.id !== actor.id) {
+  const canResolve =
+    isStaff(actor) || actor.role === "SUPPORT";
+  if (!canResolve && ticket.createdBy?.id !== actor.id) {
     throw new MockHttpError(403, "Accès refusé");
   }
-  if (!isStaff(actor) && status !== "FERME") {
+  if (!canResolve && status !== "FERME") {
     throw new MockHttpError(403, "Seul le support peut résoudre un ticket");
+  }
+  if (
+    status === "RESOLU" &&
+    ticket.kind === "CHANGEMENT_PRIX" &&
+    ticket.requestedPrice != null &&
+    ticket.parcel?.id &&
+    canResolve
+  ) {
+    const parcel = db().parcels.find((p) => p.id === ticket.parcel!.id);
+    if (parcel) {
+      const prev = parcel.price;
+      parcel.price = Number(ticket.requestedPrice);
+      pushEvent(parcel, "Prix modifié (ticket)", {
+        comment: `Ticket #${ticket.id} · ${prev} → ${parcel.price} TND`,
+        actor,
+      });
+    }
   }
   ticket.status = status;
   ticket.updatedAt = nowIso();
@@ -1461,7 +1830,7 @@ function settleCod(actor: Actor, dto: Record<string, unknown>) {
 }
 
 function notificationsFor(actor: Actor): AppNotification[] {
-  const staff = isStaff(actor);
+  const staff = isStaff(actor) || actor.role === "SUPPORT";
   const events: AppNotification[] = scopeParcels(actor).flatMap((p) =>
     (p.timeline ?? [])
       .filter((e) => e.actor !== actor.name)
@@ -1476,31 +1845,67 @@ function notificationsFor(actor: Actor): AppNotification[] {
   );
   const tickets: AppNotification[] = db()
     .tickets.filter((t) =>
-      staff ? t.status === "EN_COURS" : t.createdBy?.id === actor.id && t.status !== "EN_COURS",
+      staff
+        ? t.status === "EN_COURS"
+        : t.createdBy?.id === actor.id && t.status !== "EN_COURS",
     )
     .map((t) => ({
       id: `ticket-${t.id}-${t.status}`,
       kind: "ticket" as const,
-      title: staff ? "Ticket ouvert" : `Ticket ${t.status === "RESOLU" ? "résolu" : "fermé"}`,
+      title: staff
+        ? "Ticket ouvert"
+        : `Ticket ${t.status === "RESOLU" ? "résolu" : "fermé"}`,
       body: t.title,
       at: t.updatedAt ?? t.createdAt,
       targetId: t.id,
     }));
+
+  const relances: AppNotification[] =
+    actor.role === "LIVREUR" || actor.role === "MAGASINIER"
+      ? db()
+          .tickets.filter((t) => {
+            if (t.kind !== "RELANCE" || t.status !== "EN_COURS") return false;
+            if (t.createdBy?.id === actor.id) return false;
+            const parcel = db().parcels.find((p) => p.id === t.parcel?.id);
+            if (!parcel || parcel.status === "SUPPRIME") return false;
+            if (actor.role === "LIVREUR") return parcel.driverId === actor.id;
+            return (
+              !actor.agencyId ||
+              parcel.agencyId == null ||
+              parcel.agencyId === actor.agencyId
+            );
+          })
+          .map((t) => ({
+            id: `relance-${t.id}`,
+            kind: "ticket" as const,
+            title: "Relance colis",
+            body: t.parcel?.code
+              ? `${t.parcel.code} · ${t.description ?? t.title}`
+              : t.title,
+            at: t.createdAt,
+            targetId: t.parcel?.id ?? t.id,
+          }))
+      : [];
+
   const money = isMoneyStaff(actor);
   const payments: AppNotification[] =
     money || actor.role === "EXPEDITEUR"
       ? senderPayments(actor)
-          .filter((p) => (money ? p.status === "EN_DEMANDE" : p.status !== "EN_DEMANDE"))
+          .filter((p) =>
+            money ? p.status === "EN_DEMANDE" : p.status !== "EN_DEMANDE",
+          )
           .map((p) => ({
             id: `payment-${p.id}-${p.status}`,
             kind: "payment" as const,
-            title: staff ? "Demande de paiement" : `Paiement ${p.status.toLowerCase()}`,
+            title: staff
+              ? "Demande de paiement"
+              : `Paiement ${p.status.toLowerCase()}`,
             body: `#${p.id} · ${p.amount.toFixed(3)} TND`,
             at: p.updatedAt ?? p.createdAt,
             targetId: p.id,
           }))
       : [];
-  return [...events, ...tickets, ...payments]
+  return [...events, ...tickets, ...relances, ...payments]
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, 15);
 }
@@ -1510,10 +1915,22 @@ const PENDING_MESSAGE =
 const REJECTED_MESSAGE = "Compte refusé — contactez le support Umbrella Express.";
 
 export function mockSignIn(email: string, password: string): AuthSession {
-  const user = db().users.find(
-    (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password,
-  );
-  if (!user) throw new MockHttpError(401, "Identifiants invalides");
+  const login = email.trim();
+  const phoneLogin = /^[0-9]{8}$/.test(login);
+  const user = phoneLogin
+    ? db().users.find(
+        (u) =>
+          u.role === "CLIENT" &&
+          u.isActive &&
+          (u.phone === login ||
+            u.email.toLowerCase() === `c${login}@client.umbrella.tn`),
+      )
+    : db().users.find(
+        (u) => u.email.toLowerCase() === login.toLowerCase(),
+      );
+  if (!user || user.password !== password) {
+    throw new MockHttpError(401, "Identifiants invalides");
+  }
   if (!user.isActive) throw new MockHttpError(401, "Compte désactivé — contactez le support");
   const approval = user.approvalStatus ?? "APPROVED";
   if (approval === "PENDING") {
@@ -1666,6 +2083,18 @@ const ROUTES: Route[] = [
     pattern: /^\/parcels\/by-code\/([^/]+)$/,
     handler: ({ actor, params }) => {
       const code = decodeURIComponent(params[0] ?? "").trim();
+      const lot = findReturnLotByCode(code);
+      if (lot) {
+        if (!canReadReturnLot(actor, lot)) throw new MockHttpError(403, "Accès refusé");
+        return summarizeReturnLot(lot);
+      }
+      const manifest = findPickupManifestByCode(code);
+      if (manifest) {
+        if (!canReadPickupManifest(actor, manifest)) {
+          throw new MockHttpError(403, "Accès refusé");
+        }
+        return summarizePickupManifest(manifest);
+      }
       const hit = db().parcels.find(
         (p) =>
           p.status !== "SUPPRIME" &&
@@ -1681,6 +2110,30 @@ const ROUTES: Route[] = [
     roles: SCAN_ROLES,
     handler: ({ actor, body }) => {
       const code = str(body.code)?.trim() ?? "";
+      const lot = findReturnLotByCode(code);
+      if (lot) {
+        if (!canReadReturnLot(actor, lot)) throw new MockHttpError(403, "Accès refusé");
+        if (body.status) {
+          throw new MockHttpError(
+            400,
+            "Un lot retour ne peut pas changer de statut ici — ouvrez chaque colis",
+          );
+        }
+        return summarizeReturnLot(lot);
+      }
+      const manifest = findPickupManifestByCode(code);
+      if (manifest) {
+        if (!canReadPickupManifest(actor, manifest)) {
+          throw new MockHttpError(403, "Accès refusé");
+        }
+        if (body.status) {
+          throw new MockHttpError(
+            400,
+            "Un manifeste ne peut pas changer de statut ici — ouvrez chaque colis",
+          );
+        }
+        return summarizePickupManifest(manifest);
+      }
       const hit = db().parcels.find(
         (p) =>
           p.status !== "SUPPRIME" &&
@@ -1701,6 +2154,29 @@ const ROUTES: Route[] = [
       }
       const status = body.status ? String(body.status) : null;
       if (!status) {
+        const dayStart = (() => {
+          const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Africa/Tunis",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).formatToParts(new Date());
+          const y = Number(parts.find((p) => p.type === "year")?.value);
+          const m = Number(parts.find((p) => p.type === "month")?.value);
+          const d = Number(parts.find((p) => p.type === "day")?.value);
+          return new Date(Date.UTC(y, m - 1, d, -1, 0, 0, 0)).getTime();
+        })();
+        const alreadyToday = (hit.timeline ?? []).some(
+          (e) =>
+            e.label === "Scan bordereau" &&
+            new Date(e.at).getTime() >= dayStart,
+        );
+        if (alreadyToday) {
+          throw new MockHttpError(
+            409,
+            `Doublon — bordereau ${hit.code ?? hit.id} déjà scanné aujourd’hui`,
+          );
+        }
         pushEvent(hit, "Scan bordereau", {
           status: hit.status,
           comment: hit.code ? `Code ${hit.code}` : null,
@@ -1776,16 +2252,43 @@ const ROUTES: Route[] = [
   {
     method: "PATCH",
     pattern: /^\/parcels\/(\d+)$/,
-    roles: SENDERS,
+    roles: [...SENDERS, "CLIENT"] as AppRole[],
     handler: ({ actor, params, body }) => {
-      const parcel = ownedOrStaff(actor, Number(params[0]));
-      if (actor.role === "EXPEDITEUR" && !SENDER_EDITABLE.includes(parcel.status)) {
+      const scoped = ownedOrStaff(actor, Number(params[0]));
+      const raw = db().parcels.find((p) => p.id === scoped.id)!;
+      if (actor.role === "EXPEDITEUR" && !SENDER_EDITABLE.includes(raw.status)) {
         throw new MockHttpError(403, "Seuls les colis en attente sont modifiables");
       }
-      applyParcelFields(parcel, body);
-      pushEvent(parcel, "Colis modifié", { actor });
+      if (actor.role === "CLIENT") {
+        if (!CLIENT_EDITABLE.includes(raw.status)) {
+          throw new MockHttpError(
+            403,
+            "Modification client uniquement avant enlèvement",
+          );
+        }
+        if (body.price !== undefined) {
+          throw new MockHttpError(403, "Le client ne peut pas modifier le prix");
+        }
+        applyParcelFields(raw, {
+          recipientName: body.recipientName,
+          phone: body.phone,
+          phone2: body.phone2,
+          governorate: body.governorate,
+          city: body.city,
+          address: body.address,
+          notes: body.notes,
+          locality: body.locality,
+        });
+        const phoneNorm = raw.phone.replace(/\D/g, "").slice(-8);
+        if (/^[0-9]{8}$/.test(phoneNorm)) raw.phone = phoneNorm;
+        pushEvent(raw, "Coordonnées mises à jour (client)", { actor });
+        commit();
+        return enrichParcel(raw);
+      }
+      applyParcelFields(raw, body);
+      pushEvent(raw, "Colis modifié", { actor });
       commit();
-      return parcel;
+      return enrichParcel(raw);
     },
   },
   {
@@ -1875,6 +2378,288 @@ const ROUTES: Route[] = [
       const [removed] = store.deliveryRoutes.splice(idx, 1);
       commit();
       return { deleted: true, governorate: removed.governorate };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/return-lots$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "SUPPORT",
+      "PICKUP",
+      "LIVREUR",
+    ],
+    handler: ({ actor }) =>
+      db()
+        .returnLots.filter((l) => canReadReturnLot(actor, l))
+        .map(summarizeReturnLot)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        ),
+  },
+  {
+    method: "GET",
+    pattern: /^\/return-lots\/by-code\/([^/]+)$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "SUPPORT",
+      "PICKUP",
+      "LIVREUR",
+    ],
+    handler: ({ actor, params }) => {
+      const lot = findReturnLotByCode(decodeURIComponent(params[0] ?? ""));
+      if (!lot) throw new MockHttpError(404, "Lot introuvable");
+      if (!canReadReturnLot(actor, lot)) throw new MockHttpError(403, "Accès refusé");
+      return summarizeReturnLot(lot);
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/return-lots\/(\d+)$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "SUPPORT",
+      "PICKUP",
+      "LIVREUR",
+    ],
+    handler: ({ actor, params }) => {
+      const lot = db().returnLots.find((l) => l.id === Number(params[0]));
+      if (!lot) throw new MockHttpError(404, "Lot introuvable");
+      if (!canReadReturnLot(actor, lot)) throw new MockHttpError(403, "Accès refusé");
+      return summarizeReturnLot(lot);
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/return-lots$/,
+    roles: ["EXPEDITEUR"],
+    handler: ({ actor, body }) => {
+      const rawIds = Array.isArray(body.parcelIds) ? body.parcelIds : [];
+      const parcelIds = Array.from(
+        new Set(
+          rawIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      );
+      if (!parcelIds.length) {
+        throw new MockHttpError(400, "parcelIds requis");
+      }
+      if (parcelIds.length > MAX_RETURN_LOT) {
+        throw new MockHttpError(400, `Maximum ${MAX_RETURN_LOT} colis par lot`);
+      }
+      const parcels = parcelIds.map((id) => {
+        const p = db().parcels.find(
+          (row) =>
+            row.id === id &&
+            row.senderId === actor.id &&
+            RETURN_STATUSES.includes(row.status as StatusKey),
+        );
+        if (!p) {
+          throw new MockHttpError(
+            400,
+            "Certains colis sont introuvables, hors retours, ou ne vous appartiennent pas",
+          );
+        }
+        return p;
+      });
+      const openParcelIds = new Set(
+        db()
+          .returnLots.filter((l) => l.status === "OPEN")
+          .flatMap((l) => l.parcelIds),
+      );
+      if (parcels.some((p) => openParcelIds.has(p.id))) {
+        throw new MockHttpError(
+          400,
+          "Certains colis sont déjà dans un lot retour ouvert",
+        );
+      }
+      const at = nowIso();
+      const lot: MockReturnLot = {
+        id: nextId(db().returnLots),
+        code: `UMB-LOT-${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`,
+        senderId: actor.id,
+        status: "OPEN",
+        parcelIds: parcels.map((p) => p.id),
+        closedAt: null,
+        createdAt: at,
+        updatedAt: at,
+      };
+      db().returnLots.push(lot);
+      commit();
+      return summarizeReturnLot(lot);
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/pickup-manifests$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "SUPPORT",
+      "PICKUP",
+      "LIVREUR",
+    ],
+    handler: ({ actor, body }) => {
+      const kind = str(body.kind);
+      return db()
+        .pickupManifests.filter((m) => canReadPickupManifest(actor, m))
+        .filter((m) => !kind || m.manifestKind === kind)
+        .map(summarizePickupManifest)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/pickup-manifests\/by-code\/([^/]+)$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "SUPPORT",
+      "PICKUP",
+      "LIVREUR",
+    ],
+    handler: ({ actor, params }) => {
+      const m = findPickupManifestByCode(decodeURIComponent(params[0] ?? ""));
+      if (!m) throw new MockHttpError(404, "Manifeste introuvable");
+      if (!canReadPickupManifest(actor, m)) {
+        throw new MockHttpError(403, "Accès refusé");
+      }
+      return summarizePickupManifest(m);
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/pickup-manifests\/(\d+)$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "SUPPORT",
+      "PICKUP",
+      "LIVREUR",
+    ],
+    handler: ({ actor, params }) => {
+      const m = db().pickupManifests.find((row) => row.id === Number(params[0]));
+      if (!m) throw new MockHttpError(404, "Manifeste introuvable");
+      if (!canReadPickupManifest(actor, m)) {
+        throw new MockHttpError(403, "Accès refusé");
+      }
+      return summarizePickupManifest(m);
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/pickup-manifests$/,
+    roles: [
+      "EXPEDITEUR",
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "PICKUP",
+    ],
+    handler: ({ actor, body }) => {
+      const kind = str(body.kind) as "EN_ATTENTE" | "PRE_ENLEVEMENT" | null;
+      if (kind !== "EN_ATTENTE" && kind !== "PRE_ENLEVEMENT") {
+        throw new MockHttpError(400, "kind invalide");
+      }
+      if (actor.role === "EXPEDITEUR" && kind !== "EN_ATTENTE") {
+        throw new MockHttpError(403, "Accès refusé");
+      }
+      const requiredStatus =
+        kind === "EN_ATTENTE" ? "EN_ATTENTE" : "A_ENLEVER";
+      const rawIds = Array.isArray(body.parcelIds) ? body.parcelIds : [];
+      const parcelIds = Array.from(
+        new Set(
+          rawIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      );
+      if (!parcelIds.length) {
+        throw new MockHttpError(400, "parcelIds requis");
+      }
+      if (parcelIds.length > MAX_PICKUP_MANIFEST) {
+        throw new MockHttpError(
+          400,
+          `Maximum ${MAX_PICKUP_MANIFEST} colis par manifeste`,
+        );
+      }
+      const parcels = parcelIds.map((id) => {
+        const p = db().parcels.find(
+          (row) =>
+            row.id === id &&
+            row.status === requiredStatus &&
+            (actor.role !== "EXPEDITEUR" || row.senderId === actor.id),
+        );
+        if (!p) {
+          throw new MockHttpError(
+            400,
+            "Certains colis sont introuvables, hors statut, ou hors périmètre",
+          );
+        }
+        return p;
+      });
+      const openParcelIds = new Set(
+        db()
+          .pickupManifests.filter((m) => m.status === "OPEN")
+          .flatMap((m) => m.parcelIds),
+      );
+      if (parcels.some((p) => openParcelIds.has(p.id))) {
+        throw new MockHttpError(
+          400,
+          "Certains colis sont déjà dans un manifeste ouvert",
+        );
+      }
+      const senderIds = Array.from(new Set(parcels.map((p) => p.senderId)));
+      const senderId =
+        actor.role === "EXPEDITEUR"
+          ? actor.id
+          : senderIds.length === 1
+            ? senderIds[0]!
+            : null;
+      const prefix = kind === "EN_ATTENTE" ? "UMB-MAT" : "UMB-MPR";
+      const at = nowIso();
+      const manifest: MockPickupManifest = {
+        id: nextId(db().pickupManifests),
+        code: `${prefix}-${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`,
+        manifestKind: kind,
+        status: "OPEN",
+        createdById: actor.id,
+        senderId,
+        parcelIds: parcels.map((p) => p.id),
+        closedAt: null,
+        createdAt: at,
+        updatedAt: at,
+      };
+      db().pickupManifests.push(manifest);
+      commit();
+      return summarizePickupManifest(manifest);
     },
   },
   {
@@ -2225,6 +3010,15 @@ const ROUTES: Route[] = [
       raw.driver = { id: driver.id, name: driver.name, phone: driver.phone };
       raw.status = nextStatus;
       pushEvent(raw, `Assigné à ${driver.name}`, { status: nextStatus, actor });
+      if (driver.phone) {
+        console.info(
+          `[SMS→${driver.phone}] Umbrella: nouveau colis assigne ${raw.code}. ${raw.recipientName} — ${raw.city}`,
+        );
+        pushEvent(raw, "SMS livreur assignation", {
+          comment: `SMS envoyé à ${driver.name} (mock)`,
+          actor,
+        });
+      }
       commit();
       return enrichParcel(raw);
     },
@@ -2269,14 +3063,98 @@ const ROUTES: Route[] = [
   {
     method: "POST",
     pattern: /^\/tickets$/,
-    roles: ["SUPER_ADMIN", "ADMIN", "EXPEDITEUR", "CLIENT"],
+    roles: ["SUPER_ADMIN", "ADMIN", "SUPPORT", "EXPEDITEUR", "CLIENT"],
     handler: ({ actor, body }) => createTicket(actor, body),
   },
   {
     method: "PATCH",
     pattern: /^\/tickets\/(\d+)\/status$/,
-    roles: ["SUPER_ADMIN", "ADMIN", "EXPEDITEUR", "CLIENT"],
-    handler: ({ actor, params, body }) => updateTicketStatus(actor, Number(params[0]), body),
+    roles: ["SUPER_ADMIN", "ADMIN", "SUPPORT", "EXPEDITEUR", "CLIENT"],
+    handler: ({ actor, params, body }) =>
+      updateTicketStatus(actor, Number(params[0]), body),
+  },
+  {
+    method: "POST",
+    pattern: /^\/support-bot\/chat$/,
+    roles: ALL,
+    handler: ({ actor, body }) => {
+      const message = str(body.message);
+      if (!message) throw new MockHttpError(400, "message requis");
+      const lower = message.toLowerCase();
+      const suggestions = [
+        "Où est mon colis ?",
+        "Comment ouvrir une relance ?",
+        "Changement de prix",
+      ];
+      const codeMatch = message.match(/\b(UMB-[A-Z0-9-]+)\b/i);
+      if (codeMatch) {
+        const code = codeMatch[1]!.toLowerCase();
+        const parcel = scopeParcels(actor).find(
+          (p) => p.code?.toLowerCase() === code,
+        );
+        if (!parcel) {
+          return {
+            reply: `Colis « ${codeMatch[1]} » introuvable dans votre périmètre.`,
+            source: "rules",
+            suggestions,
+          };
+        }
+        return {
+          reply: [
+            `**${parcel.code}** — ${parcel.recipientName} (${parcel.city})`,
+            `Statut : ${parcel.status}`,
+            `Montant : ${Number(parcel.price).toFixed(3)} TND`,
+          ].join("\n"),
+          source: "rules",
+          suggestions,
+        };
+      }
+      if (/relance/.test(lower)) {
+        return {
+          reply:
+            "Relance : Tickets → type Relance → colis sorti (avant virement). Livreur + magasinier notifiés.",
+          source: "rules",
+          suggestions,
+        };
+      }
+      if (/prix|changement/.test(lower)) {
+        return {
+          reply:
+            "Changement de prix : Tickets → type Changement de prix → nouveau montant. Appliqué à la résolution support.",
+          source: "rules",
+          suggestions,
+        };
+      }
+      if (/mes colis|où est|ou est|colis/.test(lower)) {
+        const rows = scopeParcels(actor).slice(0, 5);
+        if (!rows.length) {
+          return {
+            reply: "Aucun colis visible.",
+            source: "rules",
+            suggestions,
+          };
+        }
+        return {
+          reply: [
+            "Derniers colis :",
+            ...rows.map(
+              (p) =>
+                `• ${p.code ?? `#${p.id}`} — ${p.status} — ${p.recipientName}`,
+            ),
+          ].join("\n"),
+          source: "rules",
+          suggestions,
+        };
+      }
+      return {
+        reply: [
+          `Bonjour ${actor.name} — assistant Umbrella (session ${actor.role}).`,
+          "Donnez un code UMB-… ou demandez une relance / un prix / vos colis.",
+        ].join("\n"),
+        source: "fallback",
+        suggestions,
+      };
+    },
   },
   {
     method: "GET",

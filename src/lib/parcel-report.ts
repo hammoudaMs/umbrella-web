@@ -463,3 +463,144 @@ export function openBordereauPdf(
   `;
   openPrintDocument(`Bordereau ${parcel.code ?? ""}`, body);
 }
+
+export function openReturnLotBordereauPdf(lot: {
+  code: string;
+  createdAt?: string;
+  parcels: Array<{
+    code: string | null;
+    recipientName: string;
+    phone: string;
+    city: string;
+    governorate: string;
+    price: string | number;
+    status: string;
+  }>;
+}) {
+  const rows = lot.parcels
+    .map(
+      (p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td class="mono">${escapeHtml(p.code ?? "—")}</td>
+        <td>${escapeHtml(p.recipientName)}<br/><span class="muted">${escapeHtml(p.phone)}</span></td>
+        <td>${escapeHtml(`${p.city}, ${p.governorate}`)}</td>
+        <td>${escapeHtml(formatMoney(p.price))} TND</td>
+        <td>${escapeHtml(statusLabel(p.status))}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const body = `
+    <style>
+      @page { size: A4 portrait; margin: 14mm; }
+      body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1414; font-size: 11px; }
+      .head { text-align: center; border-bottom: 3px solid #991211; padding-bottom: 12px; margin-bottom: 16px; }
+      .brand { font-size: 20px; font-weight: 800; color: #991211; margin: 0; }
+      .sub { margin: 4px 0 0; letter-spacing: 0.12em; text-transform: uppercase; color: #6b5e56; font-size: 10px; }
+      .code { font-size: 22px; font-weight: 800; font-family: ui-monospace, monospace; margin: 12px 0 4px; }
+      .barcode { display: block; margin: 10px auto 16px; max-width: 100%; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #d8d0be; padding: 7px 8px; text-align: left; vertical-align: top; }
+      th { background: #f4efe8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b5e56; }
+      .mono { font-family: ui-monospace, monospace; font-weight: 700; }
+      .muted { color: #6b5e56; font-size: 10px; }
+      .foot { margin-top: 14px; color: #6b5e56; font-size: 10px; text-align: center; }
+    </style>
+    <div class="head">
+      <p class="brand">Umbrella Express</p>
+      <p class="sub">Bordereau lot retour</p>
+      <p class="code">${escapeHtml(lot.code)}</p>
+      <p class="muted">${lot.parcels.length} colis · max 20</p>
+      <img class="barcode" src="${code128DataUrl(lot.code)}" alt="Code-barres ${escapeHtml(lot.code)}" />
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Code</th>
+          <th>Destinataire</th>
+          <th>Ville</th>
+          <th>Montant</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="foot">Scannez le code du lot pour afficher tous les colis · Émis le ${escapeHtml(formatDateTime(lot.createdAt ? new Date(lot.createdAt) : undefined))}</p>
+  `;
+  openPrintDocument(`Lot retour ${lot.code}`, body);
+}
+
+export function openPickupManifestBordereauPdf(manifest: {
+  code: string;
+  manifestKind: "EN_ATTENTE" | "PRE_ENLEVEMENT";
+  createdAt?: string;
+  parcels: Array<{
+    code: string | null;
+    recipientName: string;
+    phone: string;
+    city: string;
+    governorate: string;
+    price: string | number;
+    status: string;
+  }>;
+}) {
+  const title =
+    manifest.manifestKind === "EN_ATTENTE"
+      ? "Manifeste colis en attente"
+      : "Manifeste pré-enlèvement";
+  const rows = manifest.parcels
+    .map(
+      (p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td class="mono">${escapeHtml(p.code ?? "—")}</td>
+        <td>${escapeHtml(p.recipientName)}<br/><span class="muted">${escapeHtml(p.phone)}</span></td>
+        <td>${escapeHtml(`${p.city}, ${p.governorate}`)}</td>
+        <td>${escapeHtml(formatMoney(p.price))} TND</td>
+        <td>${escapeHtml(statusLabel(p.status))}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const body = `
+    <style>
+      @page { size: A4 portrait; margin: 14mm; }
+      body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1414; font-size: 11px; }
+      .head { text-align: center; border-bottom: 3px solid #991211; padding-bottom: 12px; margin-bottom: 16px; }
+      .brand { font-size: 20px; font-weight: 800; color: #991211; margin: 0; }
+      .sub { margin: 4px 0 0; letter-spacing: 0.12em; text-transform: uppercase; color: #6b5e56; font-size: 10px; }
+      .code { font-size: 22px; font-weight: 800; font-family: ui-monospace, monospace; margin: 12px 0 4px; }
+      .barcode { display: block; margin: 10px auto 16px; max-width: 100%; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #d8d0be; padding: 7px 8px; text-align: left; vertical-align: top; }
+      th { background: #f4efe8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b5e56; }
+      .mono { font-family: ui-monospace, monospace; font-weight: 700; }
+      .muted { color: #6b5e56; font-size: 10px; }
+      .foot { margin-top: 14px; color: #6b5e56; font-size: 10px; text-align: center; }
+    </style>
+    <div class="head">
+      <p class="brand">Umbrella Express</p>
+      <p class="sub">${escapeHtml(title)}</p>
+      <p class="code">${escapeHtml(manifest.code)}</p>
+      <p class="muted">${manifest.parcels.length} colis · max 20</p>
+      <img class="barcode" src="${code128DataUrl(manifest.code)}" alt="Code-barres ${escapeHtml(manifest.code)}" />
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Code</th>
+          <th>Destinataire</th>
+          <th>Ville</th>
+          <th>Montant</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="foot">Scannez le code du manifeste pour afficher tous les colis · Émis le ${escapeHtml(formatDateTime(manifest.createdAt ? new Date(manifest.createdAt) : undefined))}</p>
+  `;
+  openPrintDocument(`${title} ${manifest.code}`, body);
+}

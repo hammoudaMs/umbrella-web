@@ -22,6 +22,7 @@ import {
   UserRound,
   Warehouse,
 } from "lucide-react";
+import { ClientParcelEditor } from "@/components/ClientParcelEditor";
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
 import {
   Badge,
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui";
 import { DELIVERY_WINDOWS } from "@/lib/delivery-windows";
 import {
+  canOpenParcelTicket,
   formatTnd,
   type DeliveryMode,
   type Parcel,
@@ -246,6 +248,15 @@ export function ParcelDetailView({
     role === "LIVREUR" || role === "CLIENT"
       ? messagePeerId != null
       : true;
+  const canParcelTicket =
+    (role === "EXPEDITEUR" ||
+      role === "SUPPORT" ||
+      role === "ADMIN" ||
+      role === "SUPER_ADMIN") &&
+    canOpenParcelTicket(parcel);
+  const ticketsHref = canParcelTicket
+    ? `${portalBase}/tickets?parcelId=${parcel.id}`
+    : `${portalBase}/tickets`;
 
   return (
     <div className="space-y-6">
@@ -259,10 +270,15 @@ export function ParcelDetailView({
               <ArrowLeft className="h-4 w-4" aria-hidden />
               Retour
             </Link>
-            {role !== "CLIENT" ? (
-              <Link href={`${portalBase}/tickets`} className={buttonClass("secondary")}>
+            {role !== "CLIENT" &&
+            (role === "EXPEDITEUR" ||
+              role === "SUPPORT" ||
+              role === "ADMIN" ||
+              role === "SUPER_ADMIN" ||
+              role === "CHEF_AGENCE") ? (
+              <Link href={ticketsHref} className={buttonClass("secondary")}>
                 <MessageSquareWarning className="h-4 w-4" aria-hidden />
-                Signaler
+                {canParcelTicket ? "Ticket colis" : "Signaler"}
               </Link>
             ) : null}
             <Link href={`${portalBase}/bordereau?id=${parcel.id}`} className={buttonClass("primary")}>
@@ -395,6 +411,10 @@ export function ParcelDetailView({
           ) : null}
         </div>
       </Panel>
+
+      {role === "CLIENT" ? (
+        <ClientParcelEditor parcel={parcel} onSaved={() => void reload()} />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">

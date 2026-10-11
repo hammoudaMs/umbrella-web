@@ -3,6 +3,7 @@ import {
   BarChart3,
   Box,
   Building2,
+  ClipboardList,
   CreditCard,
   Home,
   MapPin,
@@ -130,6 +131,11 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
       },
       { href: `${base}/payments`, label: "Paiements", icon: CreditCard },
       { href: `${base}/retours`, label: "Retours", icon: RefreshCw },
+      {
+        href: `${base}/manifestes`,
+        label: "Manifestes",
+        icon: ClipboardList,
+      },
       { href: `${base}/adresses`, label: "Adresses", icon: MapPin },
       { href: `${base}/analytics`, label: "Rapports", icon: BarChart3 },
       { href: `${base}/settings`, label: "Paramètres", icon: Settings },
@@ -143,6 +149,12 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         href: `${base}/retours`,
         label: "Retours",
         icon: RefreshCw,
+        mobilePrimary: true,
+      },
+      {
+        href: `${base}/tickets`,
+        label: "Tickets",
+        icon: Ticket,
         mobilePrimary: true,
       },
       {
@@ -162,6 +174,12 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         href: `${base}/parcels`,
         label: "Colis",
         icon: Package,
+        mobilePrimary: true,
+      },
+      {
+        href: `${base}/manifestes`,
+        label: "Manifestes",
+        icon: ClipboardList,
         mobilePrimary: true,
       },
       {

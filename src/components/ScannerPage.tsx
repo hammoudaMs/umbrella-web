@@ -14,16 +14,29 @@ import {
   X,
   History,
   Route,
+  Camera,
 } from "lucide-react";
+import { CameraBarcodePanel } from "@/components/CameraBarcodePanel";
 import { DashboardHero } from "@/components/DashboardHero";
 import { ParcelBarcode } from "@/components/ParcelBarcode";
 import { TypeaheadSelect } from "@/components/TypeaheadSelect";
-import { Button, Panel, SelectField, buttonClass } from "@/components/ui";
+import { Badge, Button, Panel, SelectField, buttonClass } from "@/components/ui";
 import { useConfirm, useToast } from "@/components/Feedback";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 import { useAuth } from "@/lib/auth-context";
-import { apiFetch } from "@/lib/api";
-import { formatTnd, type Parcel, type TimelineEntry } from "@/lib/domain";
+import { ApiError, apiFetch } from "@/lib/api";
+import {
+  formatTnd,
+  isPickupManifest,
+  isReturnLot,
+  PICKUP_MANIFEST_KIND_LABEL,
+  type Parcel,
+  type PickupManifest,
+  type ReturnLot,
+  type TimelineEntry,
+} from "@/lib/domain";
+
+type ScanBundle = ReturnLot | PickupManifest;
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import { canScanMutate } from "@/lib/scan-actions";
 import { canTransition, requiresComment } from "@/lib/parcel-transitions";
@@ -37,6 +50,12 @@ import {
   type ScanCaseId,
 } from "@/lib/scan-cases";
 import { scanCodeCandidates } from "@/lib/normalize-scan-code";
+import {
+  rememberClientScanToday,
+  rememberOpsScanSession,
+  wasClientScannedToday,
+  wasOpsScannedThisSession,
+} from "@/lib/scan-doublon";
 import { useHidScanner } from "@/lib/use-hid-scanner";
 import { cn } from "@/lib/cn";
 
@@ -63,6 +82,8 @@ type DriverOption = {
 
 const MACHINE_TEST_MS = 30_000;
 const SCAN_IDLE_ACCEPT_MS = 350;
+/** Ignore wedge/camera double-fire of the exact same burst. */
+const PHYSICAL_DUP_MS = 450;
 const MACHINE_TEST_CODE = "UMB-TEST-SCAN";
 const MACHINE_OK_KEY = "umbrella.scanner.machineOk";
 
@@ -101,6 +122,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [parcel, setParcel] = useState<Parcel | null>(null);
+  const [bundle, setBundle] = useState<ScanBundle | null>(null);
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
@@ -126,6 +148,8 @@ export function ScannerPage({ role }: { role: AppRole }) {
   const machineStartedAt = useRef(0);
   const machineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scanIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBurst = useRef<{ code: string; at: number } | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const base = PORTAL_BY_ROLE[role];
   const firstName = session?.user.name?.split(/\s+/)[0] ?? "";
   const canMutate = canScanMutate(role);
@@ -172,6 +196,20 @@ export function ScannerPage({ role }: { role: AppRole }) {
       inputRef.current?.select();
     });
   }, []);
+
+  const reportDuplicate = useCallback(
+    (detail: string) => {
+      setFeedback({
+        tone: "warn",
+        title: "Doublon",
+        detail,
+      });
+      toast.error("Doublon", detail);
+      setCode("");
+      focusInput();
+    },
+    [toast, focusInput],
+  );
 
   const loadDrivers = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -342,20 +380,16 @@ export function ScannerPage({ role }: { role: AppRole }) {
           : stepChoice;
 
       if (!next) {
-        setFeedback({
-          tone: "ok",
-          title: "Cycle terminé pour ce cas",
-          detail: `${target.code ?? ""} · ${STATUS_META[target.status as StatusKey]?.label ?? target.status}`,
-        });
+        reportDuplicate(
+          `${target.code ?? "Ce colis"} est déjà traité pour ce parcours (${STATUS_META[target.status as StatusKey]?.label ?? target.status}).`,
+        );
         return target;
       }
 
       if (next === target.status) {
-        setFeedback({
-          tone: "warn",
-          title: "Déjà à cette étape",
-          detail: `${target.code ?? ""} · ${stepLabel(next)}. Choisissez l’étape suivante.`,
-        });
+        reportDuplicate(
+          `${target.code ?? "Ce colis"} est déjà à « ${stepLabel(next)} ». Choisissez l’étape suivante ou un autre colis.`,
+        );
         return target;
       }
 
@@ -466,21 +500,30 @@ export function ScannerPage({ role }: { role: AppRole }) {
       toast.success(nextLbl, result.code ?? undefined);
       return result;
     },
-    [role, session?.accessToken, toast, confirm, buildCaseComment, operatorName],
+    [
+      role,
+      session?.accessToken,
+      toast,
+      confirm,
+      buildCaseComment,
+      operatorName,
+      reportDuplicate,
+    ],
   );
 
-  const fetchParcelByCode = useCallback(
-    async (code: string): Promise<Parcel> => {
+  const fetchScanTarget = useCallback(
+    async (scanCode: string): Promise<Parcel | ScanBundle> => {
       if (canMutate) {
-        return apiFetch<Parcel>("/parcels/scan", {
+        return apiFetch<Parcel | ScanBundle>("/parcels/scan", {
           method: "POST",
           token: session?.accessToken,
-          body: JSON.stringify({ code }),
+          body: JSON.stringify({ code: scanCode }),
         });
       }
-      return apiFetch<Parcel>(`/parcels/by-code/${encodeURIComponent(code)}`, {
-        token: session?.accessToken,
-      });
+      return apiFetch<Parcel | ScanBundle>(
+        `/parcels/by-code/${encodeURIComponent(scanCode)}`,
+        { token: session?.accessToken },
+      );
     },
     [canMutate, session?.accessToken],
   );
@@ -493,6 +536,17 @@ export function ScannerPage({ role }: { role: AppRole }) {
       const candidates = scanCodeCandidates(q);
       const primary = candidates[0] ?? q;
       const normalized = candidates.find((c) => c !== primary) ?? primary;
+      const burstKey = normalized.toUpperCase();
+      const now = Date.now();
+      if (
+        lastBurst.current &&
+        lastBurst.current.code === burstKey &&
+        now - lastBurst.current.at < PHYSICAL_DUP_MS
+      ) {
+        reportDuplicate(`« ${normalized} » vient d’être scanné (doublon machine / caméra).`);
+        return;
+      }
+      lastBurst.current = { code: burstKey, at: now };
 
       if (machineListening.current) {
         completeMachineTest(normalized);
@@ -506,34 +560,46 @@ export function ScannerPage({ role }: { role: AppRole }) {
         return;
       }
 
+      if (role === "CLIENT") {
+        if (wasClientScannedToday(normalized)) {
+          reportDuplicate(
+            `« ${normalized} » déjà scanné aujourd’hui. Un client ne peut scanner le même bordereau qu’une fois par jour.`,
+          );
+          return;
+        }
+        rememberClientScanToday(normalized);
+        router.push(`/track?code=${encodeURIComponent(normalized)}`);
+        setFeedback({
+          tone: "ok",
+          title: "Suivi ouvert",
+          detail: `${normalized} · valable pour aujourd’hui`,
+        });
+        return;
+      }
+
       const activeCase = caseRef.current;
       const activeLivreur = livreurRef.current;
 
-      if (canMutate && !activeCase) {
-        setFeedback({
-          tone: "warn",
-          title: "Choisissez un parcours",
-          detail: "Parcours → (étape) → scan du colis réel.",
-        });
+      // Quick lookup (no parcours): block same bordereau twice in this session.
+      if (!activeCase && wasOpsScannedThisSession(normalized)) {
+        reportDuplicate(
+          `« ${normalized} » déjà scanné dans cette session (même bordereau).`,
+        );
         return;
       }
 
       inflight.current = true;
       setBusy(true);
       setFeedback(null);
+      setBundle(null);
 
       try {
-        if (role === "CLIENT") {
-          router.push(`/track?code=${encodeURIComponent(normalized)}`);
-          return;
-        }
-
-        let found: Parcel | null = null;
+        let found: Parcel | ScanBundle | null = null;
         let usedCode = primary;
         let lastError: unknown = null;
         for (const candidate of candidates) {
           try {
-            found = await fetchParcelByCode(candidate);
+            found = await fetchScanTarget(candidate);
             usedCode = candidate;
             break;
           } catch (err) {
@@ -549,10 +615,29 @@ export function ScannerPage({ role }: { role: AppRole }) {
           );
         }
 
-        setParcel(found);
         setCode("");
 
+        if (isReturnLot(found) || isPickupManifest(found)) {
+          setParcel(null);
+          setBundle(found);
+          rememberOpsScanSession(found.code);
+          const label = isReturnLot(found)
+            ? "Lot retour"
+            : `Manifeste ${PICKUP_MANIFEST_KIND_LABEL[found.manifestKind].toLowerCase()}`;
+          setFeedback({
+            tone: "ok",
+            title: `${label} · ${found.itemCount} colis`,
+            detail: `${found.code} — ouvrez chaque colis depuis la liste pour le détail / statut.`,
+          });
+          toast.success(label, `${found.itemCount} colis`);
+          return;
+        }
+
+        setParcel(found);
+        setBundle(null);
+
         if (role === "EXPEDITEUR") {
+          rememberOpsScanSession(found.code ?? usedCode);
           router.push(
             `${base}/parcels?q=${encodeURIComponent(found.code ?? usedCode)}`,
           );
@@ -569,10 +654,12 @@ export function ScannerPage({ role }: { role: AppRole }) {
           );
           if (updated) {
             setParcel(updated);
+            rememberOpsScanSession(updated.code ?? usedCode);
           }
           return;
         }
 
+        rememberOpsScanSession(found.code ?? usedCode);
         setFeedback({
           tone: "ok",
           title: "Colis trouvé",
@@ -580,16 +667,24 @@ export function ScannerPage({ role }: { role: AppRole }) {
         });
       } catch (err) {
         setParcel(null);
+        setBundle(null);
         const msg = err instanceof Error ? err.message : "Introuvable";
-        setFeedback({
-          tone: "error",
-          title: "Scan échoué",
-          detail:
-            msg === "Colis introuvable" && primary !== normalized
-              ? `${msg} (lu « ${primary} », essayé « ${normalized} »). Vérifiez le clavier EN (US) ou utilisez Scanner ce colis.`
-              : msg,
-        });
-        toast.error("Scan échoué", msg);
+        const isDup =
+          (err instanceof ApiError && err.status === 409) ||
+          /doublon/i.test(msg);
+        if (isDup) {
+          reportDuplicate(msg);
+        } else {
+          setFeedback({
+            tone: "error",
+            title: "Scan échoué",
+            detail:
+              msg === "Colis introuvable" && primary !== normalized
+                ? `${msg} (lu « ${primary} », essayé « ${normalized} »). Vérifiez le clavier EN (US) ou utilisez Scanner ce colis.`
+                : msg,
+          });
+          toast.error("Scan échoué", msg);
+        }
         setCode(normalized !== primary ? normalized : primary);
       } finally {
         if (inflight.current) {
@@ -609,12 +704,24 @@ export function ScannerPage({ role }: { role: AppRole }) {
       focusInput,
       applyCaseStep,
       completeMachineTest,
-      fetchParcelByCode,
+      fetchScanTarget,
+      reportDuplicate,
     ],
   );
 
+  const onCameraDetect = useCallback(
+    (scanned: string) => {
+      if (machineListening.current) {
+        completeMachineTest(scanned);
+        return;
+      }
+      void lookupParcel(scanned);
+    },
+    [completeMachineTest, lookupParcel],
+  );
+
   useHidScanner({
-    enabled: role !== "CLIENT",
+    enabled: true,
     onScan: (scanned) => {
       if (machineListening.current) {
         completeMachineTest(scanned);
@@ -638,6 +745,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
     setSelectedCaseId(scanCase.id);
     setSelectedStep("AUTO");
     setParcel(null);
+    setBundle(null);
     setFeedback({
       tone: "warn",
       title: scanCase.label,
@@ -658,18 +766,16 @@ export function ScannerPage({ role }: { role: AppRole }) {
 
   const stepNeedsLivreur =
     selectedStep === "AFFECTE_LIVREUR" || selectedStep === "EN_COURS";
-  const readyToScan =
-    !canMutate ||
-    (Boolean(selectedCase) &&
-      (!stepNeedsLivreur ||
-        Boolean(selectedLivreur) ||
-        role === "LIVREUR"));
+  /** Quick scan always allowed; optional parcours only for status advances. */
+  const caseReadyForMutate =
+    Boolean(selectedCase) &&
+    (!stepNeedsLivreur || Boolean(selectedLivreur) || role === "LIVREUR");
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 pb-8">
       <div className="lg:hidden">
         <DashboardHero
-          subtitle={`Bonjour${firstName ? ` ${firstName}` : ""} — choisissez le cas, puis scannez.`}
+          subtitle={`Bonjour${firstName ? ` ${firstName}` : ""} — scan rapide, cas détaillés depuis Retours / Colis.`}
         />
       </div>
 
@@ -679,10 +785,11 @@ export function ScannerPage({ role }: { role: AppRole }) {
             <ScanLine className="h-7 w-7" />
           </span>
           <h1 className="mt-3 font-display text-xl font-bold text-ops-ink">
-            Scanner bordereau
+            Scanner rapide
           </h1>
           <p className="mt-1 max-w-md text-sm text-ops-ink/50">
-            Parcours → étape → livreur → colis → scan
+            Douchette ou caméra — lecture immédiate. Un lot retour affiche tous
+            ses colis. Parcours optionnel pour avancer un statut.
           </p>
           <p className="mt-2 flex items-center gap-1.5 text-xs text-ops-ink/40">
             <UserRound className="h-3.5 w-3.5" />
@@ -845,7 +952,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
         {canMutate && availableCases.length > 0 ? (
           <div className="space-y-3 rounded-2xl border border-ops-card bg-ops-page/60 p-4">
             <SelectField
-              label="Parcours"
+              label="Parcours (optionnel)"
               value={selectedCaseId ?? ""}
               onChange={(e) => {
                 const id = e.target.value as ScanCaseId | "";
@@ -853,7 +960,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
                 selectCase(hit);
               }}
             >
-              <option value="">— Choisir un parcours —</option>
+              <option value="">— Lecture seule / rapide —</option>
               {availableCases.map((scanCase) => (
                 <option key={scanCase.id} value={scanCase.id}>
                   {scanCase.label}
@@ -864,7 +971,13 @@ export function ScannerPage({ role }: { role: AppRole }) {
               <p className="text-[11px] leading-snug text-ops-ink/45">
                 {selectedCase.description}
               </p>
-            ) : null}
+            ) : (
+              <p className="text-[11px] leading-snug text-ops-ink/45">
+                Sans parcours : scan = affichage du colis ou expansion d’un lot
+                retour. Cas détaillés (dispatch, cycle…) depuis Retours / détail
+                colis.
+              </p>
+            )}
 
             {selectedCase ? (
               <SelectField
@@ -993,11 +1106,9 @@ export function ScannerPage({ role }: { role: AppRole }) {
               placeholder={
                 machineTest.phase === "listening"
                   ? "Scannez un code pour tester…"
-                  : readyToScan
-                    ? "Pointez la douchette ici…"
-                    : stepNeedsLivreur
-                      ? "Choisissez le livreur pour cette étape"
-                      : "Choisissez un parcours d’abord"
+                  : selectedCase && !caseReadyForMutate
+                    ? "Choisissez le livreur pour cette étape"
+                    : "Douchette, caméra, ou saisie…"
               }
               disabled={busy && machineTest.phase !== "listening"}
               className={cn(
@@ -1013,15 +1124,41 @@ export function ScannerPage({ role }: { role: AppRole }) {
               Dès que des caractères apparaissent, le test passe OK.
             </p>
           ) : (
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={!code.trim() || busy || !readyToScan}
-            >
-              {busy ? "Lecture…" : "Lire le code"}
-            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={
+                  !code.trim() ||
+                  busy ||
+                  (Boolean(selectedCase) && !caseReadyForMutate)
+                }
+              >
+                {busy ? "Lecture…" : "Lire le code"}
+              </Button>
+              <Button
+                type="button"
+                variant={cameraOpen ? "secondary" : "primary"}
+                className="w-full"
+                icon={Camera}
+                disabled={busy || (Boolean(selectedCase) && !caseReadyForMutate)}
+                onClick={() => setCameraOpen((open) => !open)}
+              >
+                {cameraOpen ? "Fermer caméra" : "Scanner téléphone"}
+              </Button>
+            </div>
           )}
         </form>
+
+        {cameraOpen && machineTest.phase !== "listening" ? (
+          <CameraBarcodePanel
+            onDetect={onCameraDetect}
+            onClose={() => {
+              setCameraOpen(false);
+              focusInput();
+            }}
+          />
+        ) : null}
 
         {feedback ? (
           <div
@@ -1049,6 +1186,51 @@ export function ScannerPage({ role }: { role: AppRole }) {
           </div>
         ) : null}
       </Panel>
+
+      {bundle ? (
+        <Panel className="space-y-4">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ops-card text-ops-accent">
+              <Package className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-lg font-bold text-ops-ink">
+                {bundle.code}
+              </p>
+              <p className="text-sm text-ops-ink/70">
+                {isReturnLot(bundle)
+                  ? "Lot retour"
+                  : `Manifeste ${PICKUP_MANIFEST_KIND_LABEL[bundle.manifestKind].toLowerCase()}`}{" "}
+                · {bundle.itemCount} colis
+                {bundle.sender?.name ? ` · ${bundle.sender.name}` : ""}
+              </p>
+            </div>
+            <Badge tone={bundle.status === "OPEN" ? "success" : "neutral"}>
+              {bundle.status === "OPEN" ? "Ouvert" : "Fermé"}
+            </Badge>
+          </div>
+          <ul className="divide-y divide-ops-card rounded-xl border border-ops-card">
+            {bundle.parcels.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`${base}/parcels/${p.id}`}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 transition hover:bg-ops-page/80"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-mono text-sm font-semibold text-ops-ink">
+                      {p.code ?? `#${p.id}`}
+                    </span>
+                    <span className="block truncate text-xs text-ops-ink/50">
+                      {p.recipientName} · {p.city}
+                    </span>
+                  </span>
+                  <StatusPill status={p.status} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
 
       {parcel ? (
         <Panel className="space-y-4">

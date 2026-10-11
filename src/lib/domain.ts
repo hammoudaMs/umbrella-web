@@ -72,16 +72,117 @@ export type Parcel = {
 };
 
 export type TicketStatus = "EN_COURS" | "RESOLU" | "FERME";
+export type TicketKind = "GENERAL" | "CHANGEMENT_PRIX" | "RELANCE";
 
 export type Ticket = {
   id: number;
   title: string;
   description: string | null;
+  kind: TicketKind;
+  requestedPrice?: number | string | null;
   status: TicketStatus;
   createdAt: string;
   updatedAt?: string;
-  parcel?: { id: number; code: string | null } | null;
+  parcel?: {
+    id: number;
+    code: string | null;
+    price?: number | string;
+    status?: string;
+  } | null;
   createdBy?: { id: number; name: string; email: string };
+};
+
+export const TICKET_KIND_LABEL: Record<TicketKind, string> = {
+  GENERAL: "Général",
+  CHANGEMENT_PRIX: "Changement de prix",
+  RELANCE: "Relance",
+};
+
+/** Parcel left sender; tickets métier allowed until viré. */
+export const TICKET_PRE_SORTIE = ["EN_ATTENTE", "NON_SERIEUX"] as const;
+export const TICKET_POST_VIRE = [
+  "LIVRES_PAYES",
+  "REMBOURSES",
+  "SUPPRIME",
+] as const;
+
+export function canOpenParcelTicket(parcel: {
+  status: string;
+  codSettledAt?: string | null;
+}): boolean {
+  if ((TICKET_PRE_SORTIE as readonly string[]).includes(parcel.status)) {
+    return false;
+  }
+  if ((TICKET_POST_VIRE as readonly string[]).includes(parcel.status)) {
+    return false;
+  }
+  if (parcel.codSettledAt) return false;
+  return true;
+}
+
+export type ReturnLotStatus = "OPEN" | "CLOSED";
+
+export type ReturnLot = {
+  kind: "return_lot";
+  id: number;
+  code: string;
+  status: ReturnLotStatus;
+  senderId: number;
+  sender?: { id: number; name: string; email: string } | null;
+  itemCount: number;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  parcels: Parcel[];
+};
+
+export function isReturnLot(value: unknown): value is ReturnLot {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as ReturnLot).kind === "return_lot" &&
+    Array.isArray((value as ReturnLot).parcels)
+  );
+}
+
+export type PickupManifestKind = "EN_ATTENTE" | "PRE_ENLEVEMENT";
+export type PickupManifestStatus = "OPEN" | "CLOSED";
+
+export type PickupManifest = {
+  kind: "pickup_manifest";
+  id: number;
+  code: string;
+  manifestKind: PickupManifestKind;
+  status: PickupManifestStatus;
+  senderId: number | null;
+  sender?: { id: number; name: string; email: string } | null;
+  createdById: number;
+  createdBy?: { id: number; name: string; email: string } | null;
+  itemCount: number;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  parcels: Parcel[];
+};
+
+export function isPickupManifest(value: unknown): value is PickupManifest {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as PickupManifest).kind === "pickup_manifest" &&
+    Array.isArray((value as PickupManifest).parcels)
+  );
+}
+
+export function isParcelBundle(
+  value: unknown,
+): value is ReturnLot | PickupManifest {
+  return isReturnLot(value) || isPickupManifest(value);
+}
+
+export const PICKUP_MANIFEST_KIND_LABEL: Record<PickupManifestKind, string> = {
+  EN_ATTENTE: "En attente",
+  PRE_ENLEVEMENT: "Pré-enlèvement",
 };
 
 export type PaymentStatus = "EN_DEMANDE" | "APPROUVE" | "PAYE" | "REJETE";
