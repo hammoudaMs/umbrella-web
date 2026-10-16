@@ -764,30 +764,6 @@ function publicUser(u: MockUser) {
   };
 }
 
-function ensureZoneForGovernorate(governorate: string): number {
-  const name = governorate.trim();
-  if (!name) throw new MockHttpError(400, "Gouvernorat requis");
-  const store = db();
-  const existing = store.zones.find(
-    (z) =>
-      z.isActive &&
-      z.governorate &&
-      z.governorate.localeCompare(name, "fr", { sensitivity: "base" }) === 0,
-  );
-  if (existing) return existing.id;
-  const zone: MockZone = {
-    id: nextId(store.zones),
-    name: `Zone ${name}`,
-    governorate: name,
-    centerLat: null,
-    centerLng: null,
-    radiusKm: 20,
-    isActive: true,
-  };
-  store.zones.push(zone);
-  return zone.id;
-}
-
 function sessionFor(user: MockUser): AuthSession {
   return {
     accessToken: `mock-access-${user.id}`,

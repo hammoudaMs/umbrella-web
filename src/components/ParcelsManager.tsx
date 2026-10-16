@@ -50,7 +50,6 @@ export function ParcelsManager({
   canEdit = false,
   canDelete = false,
   title = "Colis",
-  description = "Liste des colis",
   defaultOpenCreate = false,
   returnsOnly = false,
   detailBasePath,
