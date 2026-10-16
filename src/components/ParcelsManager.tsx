@@ -197,22 +197,29 @@ export function ParcelsManager({
     }
   }
 
+  function canCancelRow(row: Parcel) {
+    if (!canDelete) return false;
+    return (
+      role !== "EXPEDITEUR" || SENDER_EDITABLE_STATUSES.includes(row.status)
+    );
+  }
+
   async function onDelete(row: Parcel) {
-    if (!canDelete) return;
+    if (!canDelete || !canCancelRow(row)) return;
     const ok = await confirm({
-      title: `Supprimer ${row.code ?? `#${row.id}`} ?`,
-      description: `${row.recipientName} · ${row.city}`,
-      confirmLabel: "Supprimer",
+      title: `Annuler ${row.code ?? `#${row.id}`} ?`,
+      description: `${row.recipientName} · ${row.city}, ${row.governorate}. Le colis sera annulé et ne pourra plus être livré.`,
+      confirmLabel: "Annuler le colis",
       tone: "danger",
     });
     if (!ok) return;
     try {
       await request(`/parcels/${row.id}`, "DELETE");
       closeEdit();
-      toast.success("Colis supprimé");
+      toast.success("Colis annulé");
       await reload();
     } catch (err) {
-      toast.error("Suppression impossible", errorText(err));
+      toast.error("Annulation impossible", errorText(err));
     }
   }
 
@@ -248,6 +255,8 @@ export function ParcelsManager({
         showPartyDetails={showPartyDetails}
         multiSelect={role === "EXPEDITEUR" && statusFilter === "EN_ATTENTE"}
         canEditRow={canEdit ? canEditRow : undefined}
+        canCancelRow={canDelete ? canCancelRow : undefined}
+        onCancel={canDelete ? (row) => void onDelete(row) : undefined}
         onEdit={
           canEdit
             ? (row) => {

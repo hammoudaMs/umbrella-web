@@ -266,23 +266,25 @@ export function CreateParcelWizard({
     }
     if (lastLookupPhoneRef.current === phone) return;
 
-    let cancelled = false;
+    const ac = new AbortController();
     const timer = window.setTimeout(() => {
       setLookingUpRecipient(true);
       void apiFetch<RecipientLookup>(
         `/parcels/recipient-by-phone/${encodeURIComponent(phone)}`,
-        { token: session.accessToken },
+        { token: session.accessToken, signal: ac.signal },
       )
         .then((hit) => {
-          if (cancelled) return;
-          lastLookupPhoneRef.current = phone;
+          if (ac.signal.aborted) return;
           if (!hit.found) {
+            lastLookupPhoneRef.current = phone;
             setRecipientLookupHint(null);
             return;
           }
-          if (hit.name?.trim()) {
+          lastLookupPhoneRef.current = phone;
+          const name = hit.name?.trim() ?? "";
+          if (name) {
             setRecipientName((current) =>
-              current.trim().length >= 2 ? current : hit.name!.trim(),
+              current.trim().length >= 2 ? current : name,
             );
           }
           const gov = hit.governorate?.trim() ?? "";
@@ -300,32 +302,43 @@ export function CreateParcelWizard({
             });
             setRecipientLookupHint(
               hit.hasAccount
-                ? "Client connu — adresse reprise automatiquement"
-                : "Adresse déjà utilisée sur ce numéro — reprise automatiquement",
+                ? "Client connu — nom et adresse repris automatiquement"
+                : "Numéro déjà livré — nom et adresse repris automatiquement",
             );
             toast.info(
-              "Adresse trouvée",
+              "Client trouvé",
               hit.hasAccount
-                ? "Compte client existant pour ce téléphone."
-                : "Dernière livraison pour ce téléphone.",
+                ? `${name || "Compte client"} · adresse reprise.`
+                : `${name || "Destinataire"} · dernière adresse reprise.`,
             );
-          } else if (hit.name?.trim()) {
-            setRecipientLookupHint(
-              "Client connu — complètez l’adresse de livraison",
-            );
-          } else {
-            setRecipientLookupHint(null);
+            return;
           }
+          if (name) {
+            setRecipientLookupHint(
+              hit.hasAccount
+                ? "Client connu — complètez l’adresse de livraison"
+                : "Numéro connu — complètez l’adresse de livraison",
+            );
+            toast.info("Client trouvé", `${name} — adresse à compléter.`);
+            return;
+          }
+          setRecipientLookupHint(null);
         })
-        .catch(() => {
-          if (!cancelled) setRecipientLookupHint(null);
+        .catch((err) => {
+          if (ac.signal.aborted) return;
+          setRecipientLookupHint(null);
+          if (err instanceof Error && err.name === "AbortError") return;
+          toast.error(
+            "Recherche destinataire impossible",
+            errorText(err, "Vérifiez l’API ou reconnectez-vous"),
+          );
         })
         .finally(() => {
-          if (!cancelled) setLookingUpRecipient(false);
+          if (!ac.signal.aborted) setLookingUpRecipient(false);
         });
-    }, 400);
+    }, 350);
     return () => {
-      cancelled = true;
+      ac.abort();
       window.clearTimeout(timer);
     };
   }, [open, phone, session?.accessToken, toast]);

@@ -10,11 +10,14 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Ban,
   ChevronRight,
   FileSpreadsheet,
   FileText,
+  MessageSquareWarning,
   Package,
   Pencil,
+  Phone,
   Printer,
 } from "lucide-react";
 import { useConfirm, useToast } from "@/components/Feedback";
@@ -29,11 +32,16 @@ import {
   trClass,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { formatTnd, type Parcel } from "@/lib/domain";
+import {
+  canOpenParcelTicket,
+  formatTnd,
+  type Parcel,
+} from "@/lib/domain";
 import {
   loadBatchPrintedIds,
   markBatchPrinted,
 } from "@/lib/batch-print-memory";
+import { displayGovernorate } from "@/lib/normalize-text";
 import {
   downloadParcelsExcel,
   openBordereauPdf,
@@ -45,6 +53,20 @@ import { canSeeDeliveryMode } from "@/lib/roles";
 import { dispatchLabel, isDispatched } from "@/lib/parcel-parcours";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import { compareSortValues, SortableTh, type SortDir } from "@/lib/table-sort";
+
+function ticketsBaseFromDetail(detailBasePath?: string): string | null {
+  if (!detailBasePath) return null;
+  const base = detailBasePath.replace(/\/parcels\/?$/, "").replace(/\/$/, "");
+  return base ? `${base}/tickets` : null;
+}
+
+function parcelAddressLines(row: Parcel) {
+  const street = [row.locality, row.address].filter(Boolean).join(", ");
+  const place = [row.city, displayGovernorate(row.governorate)]
+    .filter(Boolean)
+    .join(", ");
+  return { street, place };
+}
 
 export type DetailParcel = Parcel;
 
@@ -87,6 +109,8 @@ export function ParcelDetailTable({
   rows,
   onEdit,
   canEditRow,
+  onCancel,
+  canCancelRow,
   detailBasePath,
   reportTitle = "Liste des colis",
   loading = false,
@@ -96,6 +120,8 @@ export function ParcelDetailTable({
   rows: Parcel[];
   onEdit?: (row: Parcel) => void;
   canEditRow?: (row: Parcel) => boolean;
+  onCancel?: (row: Parcel) => void;
+  canCancelRow?: (row: Parcel) => boolean;
   detailBasePath?: string;
   reportTitle?: string;
   loading?: boolean;
@@ -107,6 +133,15 @@ export function ParcelDetailTable({
   const confirm = useConfirm();
   const router = useRouter();
   const showModes = canSeeDeliveryMode(session?.user.role);
+  const role = session?.user.role;
+  const ticketsBase = ticketsBaseFromDetail(detailBasePath);
+  const showTicketAction =
+    Boolean(ticketsBase) &&
+    (role === "EXPEDITEUR" ||
+      role === "SUPPORT" ||
+      role === "ADMIN" ||
+      role === "SUPER_ADMIN" ||
+      role === "CHEF_AGENCE");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
@@ -487,9 +522,17 @@ export function ParcelDetailTable({
                 : null;
               const meta = STATUS_META[row.status as StatusKey];
               const tone = meta?.color ?? "#64748b";
-              const metaBits = [row.city, row.phone || null].filter(Boolean);
+              const { street, place } = parcelAddressLines(row);
               const selected = selectedIds.has(row.id);
               const batchPrinted = batchPrintedIds.has(row.id);
+              const cancellable =
+                onCancel && (canCancelRow ? canCancelRow(row) : true);
+              const ticketHref = ticketsBase
+                ? `${ticketsBase}?parcelId=${row.id}`
+                : null;
+              const ticketLabel = canOpenParcelTicket(row)
+                ? "Ticket colis"
+                : "Signaler";
               return (
                 <li key={row.id} className="space-y-2">
                   {showZone ? (
@@ -545,9 +588,33 @@ export function ParcelDetailTable({
                         </p>
                       </div>
 
-                      <p className="truncate text-[12px] leading-relaxed text-ops-ink/45">
-                        {metaBits.join(" · ")}
-                      </p>
+                      <div className="space-y-1 text-[12px] leading-relaxed text-ops-ink/45">
+                        {street ? (
+                          <p className="line-clamp-2 text-ops-ink/55">{street}</p>
+                        ) : null}
+                        {place ? <p className="truncate">{place}</p> : null}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {row.phone ? (
+                          <a
+                            href={`tel:${row.phone}`}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-2.5 text-[12px] font-semibold text-ops-accent transition hover:border-ops-accent/35"
+                          >
+                            <Phone className="h-3.5 w-3.5" strokeWidth={2.25} />
+                            {row.phone}
+                          </a>
+                        ) : null}
+                        {row.phone2 ? (
+                          <a
+                            href={`tel:${row.phone2}`}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-2.5 text-[12px] font-medium text-ops-ink/55 transition hover:border-ops-ink/20"
+                          >
+                            <Phone className="h-3.5 w-3.5" strokeWidth={2.25} />
+                            {row.phone2}
+                          </a>
+                        ) : null}
+                      </div>
 
                       {showPartyDetails && row.sender?.name ? (
                         <p className="text-[11px] text-ops-ink/35">
@@ -579,6 +646,11 @@ export function ParcelDetailTable({
                         >
                           <Printer className="h-5 w-5" strokeWidth={2.25} />
                         </ActionBtn>
+                        {row.phone ? (
+                          <ActionLink label="Appeler" href={`tel:${row.phone}`}>
+                            <Phone className="h-5 w-5" strokeWidth={2.25} />
+                          </ActionLink>
+                        ) : null}
                         {onEdit ? (
                           <ActionBtn
                             label="Modifier"
@@ -586,6 +658,23 @@ export function ParcelDetailTable({
                             onClick={() => onEdit(row)}
                           >
                             <Pencil className="h-5 w-5" strokeWidth={2.25} />
+                          </ActionBtn>
+                        ) : null}
+                        {showTicketAction && ticketHref ? (
+                          <ActionLink label={ticketLabel} href={ticketHref}>
+                            <MessageSquareWarning
+                              className="h-5 w-5"
+                              strokeWidth={2.25}
+                            />
+                          </ActionLink>
+                        ) : null}
+                        {cancellable ? (
+                          <ActionBtn
+                            label="Annuler le colis"
+                            onClick={() => onCancel(row)}
+                            danger
+                          >
+                            <Ban className="h-5 w-5" strokeWidth={2.25} />
                           </ActionBtn>
                         ) : null}
                         {href ? (
@@ -675,6 +764,14 @@ export function ParcelDetailTable({
                   ).length;
                   const editable =
                     onEdit && (canEditRow ? canEditRow(row) : true);
+                  const cancellable =
+                    onCancel && (canCancelRow ? canCancelRow(row) : true);
+                  const ticketHref = ticketsBase
+                    ? `${ticketsBase}?parcelId=${row.id}`
+                    : null;
+                  const ticketLabel = canOpenParcelTicket(row)
+                    ? "Ticket colis"
+                    : "Signaler";
                   return (
                     <Fragment key={row.id}>
                       {showZone ? (
@@ -728,15 +825,29 @@ export function ParcelDetailTable({
                             </span>
                           )}
                         </td>
-                        <td className={cn(tdClass, "min-w-[10rem] px-3 py-2")}>
+                        <td className={cn(tdClass, "min-w-[12rem] px-3 py-2")}>
                           <p className="truncate text-[13px] font-semibold text-ops-ink">
                             {row.recipientName}
                           </p>
-                          <p className="truncate text-[11px] text-ops-ink/40">
-                            {row.phone}
-                            <span className="mx-1 text-ops-ink/20">·</span>
-                            {row.city}
+                          <p className="truncate text-[11px] text-ops-ink/45">
+                            {[row.city, displayGovernorate(row.governorate)]
+                              .filter(Boolean)
+                              .join(", ")}
                           </p>
+                          {row.address ? (
+                            <p className="truncate text-[11px] text-ops-ink/35">
+                              {row.address}
+                            </p>
+                          ) : null}
+                          {row.phone ? (
+                            <a
+                              href={`tel:${row.phone}`}
+                              className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-ops-accent hover:underline"
+                            >
+                              <Phone className="h-3 w-3" aria-hidden />
+                              {row.phone}
+                            </a>
+                          ) : null}
                         </td>
                         {showPartyDetails ? (
                           <td
@@ -789,6 +900,14 @@ export function ParcelDetailTable({
                             >
                               <Printer className="h-3.5 w-3.5" />
                             </IconBtn>
+                            {row.phone ? (
+                              <IconLink
+                                label="Appeler"
+                                href={`tel:${row.phone}`}
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                              </IconLink>
+                            ) : null}
                             {onEdit ? (
                               <IconBtn
                                 label="Modifier"
@@ -796,6 +915,20 @@ export function ParcelDetailTable({
                                 onClick={() => onEdit(row)}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
+                              </IconBtn>
+                            ) : null}
+                            {showTicketAction && ticketHref ? (
+                              <IconLink label={ticketLabel} href={ticketHref}>
+                                <MessageSquareWarning className="h-3.5 w-3.5" />
+                              </IconLink>
+                            ) : null}
+                            {cancellable ? (
+                              <IconBtn
+                                label="Annuler le colis"
+                                onClick={() => onCancel(row)}
+                                danger
+                              >
+                                <Ban className="h-3.5 w-3.5" />
                               </IconBtn>
                             ) : null}
                           </div>
@@ -847,11 +980,13 @@ function ActionBtn({
   label,
   onClick,
   disabled,
+  danger,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  danger?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -861,10 +996,49 @@ function ActionBtn({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-3 text-ops-ink/70 transition hover:border-ops-ink/20 hover:text-ops-ink disabled:cursor-not-allowed disabled:opacity-35"
+      className={cn(
+        "inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border bg-ops-page px-3 transition disabled:cursor-not-allowed disabled:opacity-35",
+        danger
+          ? "border-ops-accent/30 text-ops-accent hover:border-ops-accent/50 hover:bg-ops-accent/10"
+          : "border-ops-card text-ops-ink/70 hover:border-ops-ink/20 hover:text-ops-ink",
+      )}
     >
       {children}
     </button>
+  );
+}
+
+function ActionLink({
+  label,
+  href,
+  children,
+}: {
+  label: string;
+  href: string;
+  children: ReactNode;
+}) {
+  const external = href.startsWith("tel:");
+  if (external) {
+    return (
+      <a
+        href={href}
+        title={label}
+        aria-label={label}
+        className="inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-3 text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-accent"
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      title={label}
+      aria-label={label}
+      className="inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-3 text-ops-ink/70 transition hover:border-ops-ink/20 hover:text-ops-ink"
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -872,11 +1046,13 @@ function IconBtn({
   label,
   onClick,
   disabled,
+  danger,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  danger?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -886,10 +1062,41 @@ function IconBtn({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ops-ink/35 transition hover:bg-ops-ink/[0.06] hover:text-ops-ink disabled:cursor-not-allowed disabled:opacity-30"
+      className={cn(
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-30",
+        danger
+          ? "text-ops-accent/70 hover:bg-ops-accent/10 hover:text-ops-accent"
+          : "text-ops-ink/35 hover:bg-ops-ink/[0.06] hover:text-ops-ink",
+      )}
     >
       {children}
     </button>
+  );
+}
+
+function IconLink({
+  label,
+  href,
+  children,
+}: {
+  label: string;
+  href: string;
+  children: ReactNode;
+}) {
+  const external = href.startsWith("tel:");
+  const className =
+    "inline-flex h-8 w-8 items-center justify-center rounded-lg text-ops-ink/35 transition hover:bg-ops-ink/[0.06] hover:text-ops-ink";
+  if (external) {
+    return (
+      <a href={href} title={label} aria-label={label} className={className}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} title={label} aria-label={label} className={className}>
+      {children}
+    </Link>
   );
 }
 

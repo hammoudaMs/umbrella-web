@@ -3100,8 +3100,23 @@ const ROUTES: Route[] = [
     roles: SENDERS,
     handler: ({ actor, params }) => {
       const parcel = ownedOrStaff(actor, Number(params[0]));
+      if (parcel.status === "SUPPRIME") {
+        throw new MockHttpError(400, "Parcel already deleted");
+      }
+      if (
+        actor.role === "EXPEDITEUR" &&
+        !["EN_ATTENTE", "NON_SERIEUX"].includes(parcel.status)
+      ) {
+        throw new MockHttpError(
+          403,
+          "Seuls les colis en attente peuvent être annulés",
+        );
+      }
       parcel.status = "SUPPRIME";
-      pushEvent(parcel, "Colis supprimé", { status: "SUPPRIME", actor });
+      pushEvent(parcel, actor.role === "EXPEDITEUR" ? "Colis annulé (expéditeur)" : "Colis supprimé", {
+        status: "SUPPRIME",
+        actor,
+      });
       commit();
       return { id: parcel.id, deleted: true };
     },
