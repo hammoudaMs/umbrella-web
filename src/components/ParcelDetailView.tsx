@@ -533,6 +533,8 @@ export function ParcelDetailView({
             </h2>
             <dl className="mt-4 grid gap-4 sm:grid-cols-3">
               <Detail label="Désignation">{parcel.designation ?? "—"}</Detail>
+              <Detail label="Couleur">{parcel.color ?? "—"}</Detail>
+              <Detail label="Taille">{parcel.size ?? "—"}</Detail>
               <Detail label="Articles">{parcel.articleCount ?? 1}</Detail>
               <Detail label="Paiement">{parcel.paymentMode ?? "espèce"}</Detail>
               <Detail label="Livreur">

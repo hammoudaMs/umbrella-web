@@ -4,6 +4,7 @@ import {
   FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -75,6 +76,20 @@ const EMPTY_ADDRESS: AddressLocationValue = {
   lat: null,
   lng: null,
   accuracyMeters: null,
+};
+
+type RecipientLookup = {
+  found: boolean;
+  phone: string;
+  name?: string | null;
+  governorate?: string | null;
+  city?: string | null;
+  locality?: string | null;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  source?: "client" | "parcel";
+  hasAccount?: boolean;
 };
 
 const INTERNAL_ROUTE_GOVS = new Set([
@@ -168,6 +183,10 @@ export function CreateParcelWizard({
   const [allowTry, setAllowTry] = useState(false);
   const [isFragile, setIsFragile] = useState(false);
   const [liabilityAccepted, setLiabilityAccepted] = useState(false);
+  const [contentDeclarationAccepted, setContentDeclarationAccepted] =
+    useState(false);
+  const [color, setColor] = useState("");
+  const [size, setSize] = useState("");
   const [productType, setProductType] = useState("");
   const [productTypeOther, setProductTypeOther] = useState("");
   const [location, setLocation] = useState<AddressLocationValue>(EMPTY_ADDRESS);
@@ -185,7 +204,12 @@ export function CreateParcelWizard({
   const [paymentMode, setPaymentMode] = useState("espece");
   const [exchangeNotes, setExchangeNotes] = useState("");
   const [notes, setNotes] = useState("");
-  const [parcelAdvancedOpen, setParcelAdvancedOpen] = useState(false);
+  const [parcelAdvancedOpen, setParcelAdvancedOpen] = useState(true);
+  const [recipientLookupHint, setRecipientLookupHint] = useState<string | null>(
+    null,
+  );
+  const [lookingUpRecipient, setLookingUpRecipient] = useState(false);
+  const lastLookupPhoneRef = useRef<string | null>(null);
 
   const addressQuality = useMemo(() => scoreAddress(location), [location]);
   const step = STEPS[stepIndex];
@@ -200,6 +224,9 @@ export function CreateParcelWizard({
     setAllowTry(false);
     setIsFragile(false);
     setLiabilityAccepted(false);
+    setContentDeclarationAccepted(false);
+    setColor("");
+    setSize("");
     setProductType("");
     setProductTypeOther("");
     setLocation(EMPTY_ADDRESS);
@@ -215,8 +242,11 @@ export function CreateParcelWizard({
     setPaymentMode("espece");
     setExchangeNotes("");
     setNotes("");
-    setParcelAdvancedOpen(false);
+    setParcelAdvancedOpen(true);
     setCreatedParcel(null);
+    setRecipientLookupHint(null);
+    setLookingUpRecipient(false);
+    lastLookupPhoneRef.current = null;
   }
 
   useEffect(() => {
@@ -225,6 +255,80 @@ export function CreateParcelWizard({
     setStepIndex(0);
     setCreatedParcel(null);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || phone.length !== 8 || !session?.accessToken) {
+      if (phone.length !== 8) {
+        setRecipientLookupHint(null);
+        lastLookupPhoneRef.current = null;
+      }
+      return;
+    }
+    if (lastLookupPhoneRef.current === phone) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setLookingUpRecipient(true);
+      void apiFetch<RecipientLookup>(
+        `/parcels/recipient-by-phone/${encodeURIComponent(phone)}`,
+        { token: session.accessToken },
+      )
+        .then((hit) => {
+          if (cancelled) return;
+          lastLookupPhoneRef.current = phone;
+          if (!hit.found) {
+            setRecipientLookupHint(null);
+            return;
+          }
+          if (hit.name?.trim()) {
+            setRecipientName((current) =>
+              current.trim().length >= 2 ? current : hit.name!.trim(),
+            );
+          }
+          const gov = hit.governorate?.trim() ?? "";
+          const city = hit.city?.trim() ?? "";
+          const street = hit.address?.trim() ?? "";
+          if (gov && city && street) {
+            setLocation({
+              governorate: gov,
+              city,
+              locality: hit.locality?.trim() || "",
+              address: street,
+              lat: hit.lat ?? null,
+              lng: hit.lng ?? null,
+              accuracyMeters: null,
+            });
+            setRecipientLookupHint(
+              hit.hasAccount
+                ? "Client connu — adresse reprise automatiquement"
+                : "Adresse déjà utilisée sur ce numéro — reprise automatiquement",
+            );
+            toast.info(
+              "Adresse trouvée",
+              hit.hasAccount
+                ? "Compte client existant pour ce téléphone."
+                : "Dernière livraison pour ce téléphone.",
+            );
+          } else if (hit.name?.trim()) {
+            setRecipientLookupHint(
+              "Client connu — complètez l’adresse de livraison",
+            );
+          } else {
+            setRecipientLookupHint(null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setRecipientLookupHint(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLookingUpRecipient(false);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, phone, session?.accessToken, toast]);
 
   useEffect(() => {
     if (!open) return;
@@ -369,6 +473,12 @@ export function CreateParcelWizard({
         );
         return false;
       }
+      if (!contentDeclarationAccepted) {
+        toast.error(
+          "Acceptez la déclaration légale (contenu léger, conforme, responsabilité expéditeur).",
+        );
+        return false;
+      }
       return true;
     }
     return true;
@@ -401,6 +511,12 @@ export function CreateParcelWizard({
       );
       return;
     }
+    if (!contentDeclarationAccepted) {
+      toast.error(
+        "Acceptez la déclaration légale (contenu léger, conforme, responsabilité expéditeur).",
+      );
+      return;
+    }
 
     const designation =
       productType === "Autre" ? productTypeOther.trim() : productType;
@@ -430,7 +546,10 @@ export function CreateParcelWizard({
         allowOpen: allowTry,
         tryProduct: allowTry,
         isFragile,
+        color: color.trim() || undefined,
+        size: size.trim() || undefined,
         liabilityAcceptedAt: allowTry ? new Date().toISOString() : undefined,
+        contentDeclarationAcceptedAt: new Date().toISOString(),
         isExchange: exchange,
         exchangeNotes: exchange ? exchangeNotes : undefined,
         paymentMode,
@@ -595,7 +714,10 @@ export function CreateParcelWizard({
                 form="parcel-create-form"
                 icon={Plus}
                 loading={saving}
-                disabled={allowTry && !liabilityAccepted}
+                disabled={
+                  !contentDeclarationAccepted ||
+                  (allowTry && !liabilityAccepted)
+                }
                 className="w-full sm:w-auto sm:ms-auto"
               >
                 Créer le colis
@@ -737,6 +859,11 @@ export function CreateParcelWizard({
                     setPhone(e.target.value.replace(/\D/g, "").slice(0, 8))
                   }
                 />
+                {lookingUpRecipient ? (
+                  <p className="mt-1.5 text-[11px] text-ops-ink/40">
+                    Recherche client / adresse…
+                  </p>
+                ) : null}
               </div>
               <div>
                 <FieldLabel htmlFor="phone2">Téléphone 2</FieldLabel>
@@ -754,6 +881,11 @@ export function CreateParcelWizard({
                 />
               </div>
             </div>
+            {recipientLookupHint ? (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-3.5 py-2.5 text-sm text-ops-ink/75">
+                {recipientLookupHint}
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -768,6 +900,11 @@ export function CreateParcelWizard({
                   ? "Utilisez la carte ou Ma position pour l’adresse de livraison."
                   : "Adresse précise, créneau et repère pour le livreur."}
               </p>
+              {recipientLookupHint ? (
+                <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300/80">
+                  {recipientLookupHint}
+                </p>
+              ) : null}
             </div>
 
             {!isSender && savedAddresses.length > 0 ? (
@@ -992,7 +1129,7 @@ export function CreateParcelWizard({
                   onClick={() => setParcelAdvancedOpen((v) => !v)}
                   className="flex w-full items-center justify-between rounded-xl border border-ops-card bg-ops-page/50 px-3.5 py-3 text-left text-sm font-semibold text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-ink"
                 >
-                  Options (articles, essai, échange…)
+                  Options (articles, couleur, taille, essai…)
                   <ChevronDown
                     className={cn(
                       "h-4 w-4 shrink-0 transition",
@@ -1053,6 +1190,33 @@ export function CreateParcelWizard({
                       </select>
                     </div>
 
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <FieldLabel htmlFor="color">Couleur</FieldLabel>
+                        <input
+                          id="color"
+                          name="color"
+                          className={fieldClass}
+                          value={color}
+                          onChange={(e) => setColor(e.target.value)}
+                          placeholder="Ex. noir, rouge…"
+                          maxLength={80}
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel htmlFor="size">Taille</FieldLabel>
+                        <input
+                          id="size"
+                          name="size"
+                          className={fieldClass}
+                          value={size}
+                          onChange={(e) => setSize(e.target.value)}
+                          placeholder="Ex. M, 42, unique…"
+                          maxLength={80}
+                        />
+                      </div>
+                    </div>
+
                     <ParcelOptionsBlock
                       allowTry={allowTry}
                       setAllowTry={setAllowTry}
@@ -1068,6 +1232,11 @@ export function CreateParcelWizard({
                     />
                   </div>
                 ) : null}
+
+                <ContentDeclarationBlock
+                  accepted={contentDeclarationAccepted}
+                  setAccepted={setContentDeclarationAccepted}
+                />
               </>
             ) : (
               <>
@@ -1120,6 +1289,33 @@ export function CreateParcelWizard({
                   </div>
                 </div>
 
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <FieldLabel htmlFor="color">Couleur</FieldLabel>
+                    <input
+                      id="color"
+                      name="color"
+                      className={fieldClass}
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      placeholder="Ex. noir, rouge…"
+                      maxLength={80}
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel htmlFor="size">Taille</FieldLabel>
+                    <input
+                      id="size"
+                      name="size"
+                      className={fieldClass}
+                      value={size}
+                      onChange={(e) => setSize(e.target.value)}
+                      placeholder="Ex. M, 42, unique…"
+                      maxLength={80}
+                    />
+                  </div>
+                </div>
+
                 {showModes ? (
                   <div>
                     <FieldLabel htmlFor="mode">Canal de livraison</FieldLabel>
@@ -1169,6 +1365,11 @@ export function CreateParcelWizard({
                   setExchangeNotes={setExchangeNotes}
                   fieldClass={fieldClass}
                 />
+
+                <ContentDeclarationBlock
+                  accepted={contentDeclarationAccepted}
+                  setAccepted={setContentDeclarationAccepted}
+                />
               </>
             )}
           </section>
@@ -1217,6 +1418,16 @@ export function CreateParcelWizard({
                   {price ? formatMoney(Number(price)) : "—"} ·{" "}
                   {articleCount || 1} art. · {parcelCount || 1} colis
                 </p>
+                {color.trim() || size.trim() ? (
+                  <p className="mt-1 text-ops-ink/45">
+                    {[
+                      color.trim() ? `Couleur : ${color.trim()}` : null,
+                      size.trim() ? `Taille : ${size.trim()}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
                 {showModes ? (
                   <p className="mt-1 text-ops-ink/45">
                     Canal : {deliveryMode === "INTERNAL" ? "Umbrella" : "Navex"}
@@ -1230,6 +1441,10 @@ export function CreateParcelWizard({
                 </p>
                 <p className="text-ops-ink/70">
                   Échange : {exchange ? "Oui" : "Non"}
+                </p>
+                <p className="mt-1 text-ops-ink/45">
+                  Déclaration légale :{" "}
+                  {contentDeclarationAccepted ? "Acceptée" : "Non acceptée"}
                 </p>
                 {showZones && zoneName ? (
                   <p className="mt-1 text-ops-ink/45">Zone : {zoneName}</p>
@@ -1253,6 +1468,43 @@ export function CreateParcelWizard({
         ) : null}
       </form>
     </Modal>
+  );
+}
+
+function ContentDeclarationBlock({
+  accepted,
+  setAccepted,
+}: {
+  accepted: boolean;
+  setAccepted: (v: boolean) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-ops-accent/30 bg-ops-accent/[0.07] p-4">
+      <p className="text-sm font-semibold text-ops-ink">
+        Déclaration obligatoire — législation tunisienne
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-ops-ink/55">
+        Je déclare que le produit est léger, autorisé à la circulation et non
+        interdit par la législation tunisienne. J&apos;assume l&apos;entière
+        responsabilité du contenu en tant qu&apos;expéditeur. Umbrella Express /
+        la société décline toute responsabilité liée au contenu, à sa nature ou
+        à sa conformité légale.
+      </p>
+      <label className="mt-4 flex items-start gap-3 text-sm text-ops-ink">
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-1 h-4 w-4 rounded border-ops-card accent-ops-accent"
+          required
+        />
+        <span>
+          J&apos;accepte cette déclaration : produit léger et licite, pleine
+          responsabilité de l&apos;expéditeur, aucune responsabilité de la
+          société.
+        </span>
+      </label>
+    </div>
   );
 }
 

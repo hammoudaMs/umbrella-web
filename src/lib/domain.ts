@@ -58,7 +58,10 @@ export type Parcel = {
   allowOpen?: boolean;
   isFragile?: boolean;
   tryProduct?: boolean;
+  color?: string | null;
+  size?: string | null;
   liabilityAcceptedAt?: string | null;
+  contentDeclarationAcceptedAt?: string | null;
   isExchange?: boolean;
   exchangeNotes?: string | null;
   paymentMode?: string | null;

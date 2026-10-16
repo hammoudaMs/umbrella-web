@@ -1040,6 +1040,8 @@ function applyParcelFields(target: MockParcel, dto: Record<string, unknown>) {
   target.phone2 = optionalText("phone2", target.phone2);
   target.locality = optionalText("locality", target.locality);
   target.designation = optionalText("designation", target.designation);
+  target.color = optionalText("color", target.color);
+  target.size = optionalText("size", target.size);
   target.notes = optionalText("notes", target.notes);
   target.paymentMode = optionalText("paymentMode", target.paymentMode);
   target.exchangeNotes = optionalText("exchangeNotes", target.exchangeNotes);
@@ -1067,6 +1069,10 @@ function applyParcelFields(target: MockParcel, dto: Record<string, unknown>) {
   }
   if (dto.liabilityAcceptedAt !== undefined) {
     target.liabilityAcceptedAt = str(dto.liabilityAcceptedAt) ?? null;
+  }
+  if (dto.contentDeclarationAcceptedAt !== undefined) {
+    target.contentDeclarationAcceptedAt =
+      str(dto.contentDeclarationAcceptedAt) ?? null;
   }
   if (dto.zoneId !== undefined) {
     const zoneId = num(dto.zoneId);
@@ -1369,6 +1375,12 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
   const at = nowIso();
   const price = num(dto.price);
   if (price === undefined || price < 0) throw new MockHttpError(400, "Prix invalide");
+  if (!str(dto.contentDeclarationAcceptedAt)) {
+    throw new MockHttpError(
+      400,
+      "Déclaration obligatoire : contenu léger, conforme à la législation tunisienne, responsabilité exclusive de l’expéditeur",
+    );
+  }
   const parcel: MockParcel = {
     id: nextId(db().parcels),
     code: generateCode(mode === "EXTERNAL" ? "UMB-EXT" : "UMB"),
@@ -2817,6 +2829,58 @@ const SCAN_ROLES: AppRole[] = [
 
 const ROUTES: Route[] = [
   { method: "GET", pattern: /^\/parcels$/, handler: ({ actor }) => scopeParcels(actor) },
+  {
+    method: "GET",
+    pattern: /^\/parcels\/recipient-by-phone\/([^/]+)$/,
+    roles: ["SUPER_ADMIN", "ADMIN", "CHEF_AGENCE", "EXPEDITEUR"] as AppRole[],
+    handler: ({ params }) => {
+      const phoneDigits = (params[0] ?? "").replace(/\D/g, "").slice(-8);
+      if (!/^[0-9]{8}$/.test(phoneDigits)) {
+        throw new MockHttpError(400, "Téléphone : 8 chiffres requis");
+      }
+      const client = db().users.find(
+        (u) =>
+          u.role === "CLIENT" &&
+          u.phone === phoneDigits &&
+          u.isActive !== false &&
+          (u.approvalStatus === "APPROVED" || !u.approvalStatus),
+      );
+      const lastParcel = db()
+        .parcels.filter(
+          (p) => p.phone === phoneDigits && p.status !== "SUPPRIME",
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
+      if (!client && !lastParcel) {
+        return { found: false, phone: phoneDigits };
+      }
+      const useParcelAddress = Boolean(lastParcel?.address?.trim());
+      return {
+        found: true,
+        phone: phoneDigits,
+        name:
+          lastParcel?.recipientName?.trim() ||
+          client?.name?.trim() ||
+          null,
+        governorate: useParcelAddress
+          ? lastParcel!.governorate
+          : (client?.governorate ?? lastParcel?.governorate ?? null),
+        city: useParcelAddress
+          ? lastParcel!.city
+          : (client?.city ?? lastParcel?.city ?? null),
+        locality: lastParcel?.locality ?? null,
+        address: useParcelAddress
+          ? lastParcel!.address
+          : (client?.address ?? lastParcel?.address ?? null),
+        lat: lastParcel?.lat ?? null,
+        lng: lastParcel?.lng ?? null,
+        source: useParcelAddress ? "parcel" : client ? "client" : "parcel",
+        hasAccount: Boolean(client),
+      };
+    },
+  },
   {
     method: "GET",
     pattern: /^\/parcels\/by-code\/([^/]+)$/,

@@ -50,6 +50,7 @@ export function ParcelsManager({
   canEdit = false,
   canDelete = false,
   title = "Colis",
+  description: _description,
   defaultOpenCreate = false,
   returnsOnly = false,
   detailBasePath,
@@ -245,6 +246,7 @@ export function ParcelsManager({
         detailBasePath={detailBasePath}
         reportTitle={heading || title}
         showPartyDetails={showPartyDetails}
+        multiSelect={role === "EXPEDITEUR" && statusFilter === "EN_ATTENTE"}
         canEditRow={canEdit ? canEditRow : undefined}
         onEdit={
           canEdit

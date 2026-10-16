@@ -52,10 +52,9 @@ const MODE_ROLES: AppRole[] = [
   "SUPER_ADMIN",
   "ADMIN",
   "CHEF_AGENCE",
-  "EXPEDITEUR",
 ];
 
-/** Who can pick / see Navex vs Umbrella on create & lists. */
+/** Who can pick / see Navex vs Umbrella on create & ops lists. */
 export function canSeeDeliveryMode(role?: AppRole | null): boolean {
   return !!role && MODE_ROLES.includes(role);
 }

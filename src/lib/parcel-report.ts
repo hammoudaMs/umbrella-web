@@ -17,6 +17,8 @@ export type ReportParcel = {
   tryProduct?: boolean;
   isFragile?: boolean;
   isExchange?: boolean;
+  color?: string | null;
+  size?: string | null;
 };
 
 function escapeHtml(value: string) {
@@ -393,37 +395,42 @@ export function openParcelListPdf(options: {
   openPrintDocument(`Umbrella — ${title}`, body);
 }
 
-export function openBordereauPdf(
-  parcel: ReportParcel & { designation?: string | null },
-  options?: { includeMode?: boolean },
-) {
-  const includeMode = options?.includeMode ?? false;
-  const body = `
-    <style>
-      @page { size: A4 portrait; margin: 16mm; }
-      .bl {
-        max-width: 520px;
-        margin: 0 auto;
-        border: 1px solid #d8d0be;
-        border-radius: 10px;
-        padding: 22px;
-      }
-      .bl-title {
-        text-align: center;
-        border-bottom: 2px solid #991211;
-        padding-bottom: 12px;
-        margin-bottom: 18px;
-      }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-      .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b5e56; margin: 0 0 3px; }
-      .value { font-size: 13px; font-weight: 700; margin: 0; }
-      .barcode {
-        margin: 18px auto 4px;
-        display: block;
-        max-width: 100%;
-        height: auto;
-      }
-    </style>
+type BordereauParcel = ReportParcel & { designation?: string | null };
+
+function bordereauSheetStyles() {
+  return `
+    @page { size: A4 portrait; margin: 16mm; }
+    .bl {
+      max-width: 520px;
+      margin: 0 auto;
+      border: 1px solid #d8d0be;
+      border-radius: 10px;
+      padding: 22px;
+    }
+    .bl + .bl { page-break-before: always; margin-top: 0; }
+    .bl-title {
+      text-align: center;
+      border-bottom: 2px solid #991211;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b5e56; margin: 0 0 3px; }
+    .value { font-size: 13px; font-weight: 700; margin: 0; }
+    .barcode {
+      margin: 18px auto 4px;
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+  `;
+}
+
+function bordereauSheetHtml(
+  parcel: BordereauParcel,
+  includeMode: boolean,
+): string {
+  return `
     <div class="bl">
       <div class="bl-title">
         <div class="brand-mark" style="justify-content:center">
@@ -466,6 +473,8 @@ export function openBordereauPdf(
             Ouvrir le colis : ${parcel.allowOpen || parcel.tryProduct ? "Oui" : "Non"}
             · Fragile : ${parcel.isFragile ? "Oui" : "Non"}
             ${parcel.isExchange ? " · Échange : Oui" : ""}
+            ${parcel.color ? ` · Couleur : ${escapeHtml(parcel.color)}` : ""}
+            ${parcel.size ? ` · Taille : ${escapeHtml(parcel.size)}` : ""}
           </p>
         </div>
       </div>
@@ -477,7 +486,34 @@ export function openBordereauPdf(
       <p class="muted" style="text-align:center">Émis le ${escapeHtml(formatDateTime())}</p>
     </div>
   `;
+}
+
+export function openBordereauPdf(
+  parcel: BordereauParcel,
+  options?: { includeMode?: boolean },
+) {
+  const includeMode = options?.includeMode ?? false;
+  const body = `<style>${bordereauSheetStyles()}</style>${bordereauSheetHtml(parcel, includeMode)}`;
   openPrintDocument(`Bordereau ${parcel.code ?? ""}`, body);
+}
+
+export function openBordereauxPdf(
+  parcels: BordereauParcel[],
+  options?: { includeMode?: boolean },
+) {
+  if (parcels.length === 0) {
+    throw new Error("Aucun colis sélectionné");
+  }
+  if (parcels.length === 1) {
+    openBordereauPdf(parcels[0]!, options);
+    return;
+  }
+  const includeMode = options?.includeMode ?? false;
+  const sheets = parcels
+    .map((parcel) => bordereauSheetHtml(parcel, includeMode))
+    .join("");
+  const body = `<style>${bordereauSheetStyles()}</style>${sheets}`;
+  openPrintDocument(`Bordereaux (${parcels.length})`, body);
 }
 
 export function openReturnLotBordereauPdf(lot: {
