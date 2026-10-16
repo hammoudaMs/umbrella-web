@@ -1074,6 +1074,7 @@ function applyParcelFields(target: MockParcel, dto: Record<string, unknown>) {
   target.articleCount = optionalNumber("articleCount", target.articleCount) ?? 1;
   target.parcelCount = optionalNumber("parcelCount", target.parcelCount) ?? 1;
   target.allowOpen = flag("allowOpen", target.allowOpen);
+  target.isFragile = flag("isFragile", target.isFragile);
   target.tryProduct = flag("tryProduct", target.tryProduct);
   target.isExchange = flag("isExchange", target.isExchange);
   if (dto.price !== undefined) {

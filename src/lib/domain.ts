@@ -56,6 +56,7 @@ export type Parcel = {
   agency?: { id: number; name: string; governorate: string } | null;
   timeline?: TimelineEntry[];
   allowOpen?: boolean;
+  isFragile?: boolean;
   tryProduct?: boolean;
   liabilityAcceptedAt?: string | null;
   isExchange?: boolean;

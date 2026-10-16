@@ -13,6 +13,10 @@ export type ReportParcel = {
   status: string;
   mode: "EXTERNAL" | "INTERNAL";
   createdAt: string;
+  allowOpen?: boolean;
+  tryProduct?: boolean;
+  isFragile?: boolean;
+  isExchange?: boolean;
 };
 
 function escapeHtml(value: string) {
@@ -455,6 +459,14 @@ export function openBordereauPdf(
           <p class="value">${escapeHtml(statusLabel(parcel.status))}${
             includeMode ? ` · ${escapeHtml(parcel.mode)}` : ""
           }</p>
+        </div>
+        <div style="grid-column:1 / -1">
+          <p class="label">Options colis</p>
+          <p class="value">
+            Ouvrir le colis : ${parcel.allowOpen || parcel.tryProduct ? "Oui" : "Non"}
+            · Fragile : ${parcel.isFragile ? "Oui" : "Non"}
+            ${parcel.isExchange ? " · Échange : Oui" : ""}
+          </p>
         </div>
       </div>
       ${

@@ -319,6 +319,7 @@ export function ParcelDetailView({
               <Badge tone="warning">Non dispatché</Badge>
             )}
             {parcel.tryProduct ? <Badge tone="warning">Essai produit</Badge> : null}
+            {parcel.isFragile ? <Badge tone="danger">Fragile</Badge> : null}
             {parcel.isExchange ? <Badge tone="gold">Échange</Badge> : null}
           </div>
           <p className="font-display text-2xl font-extrabold text-ops-accent">

@@ -166,6 +166,7 @@ export function CreateParcelWizard({
   const [phone2, setPhone2] = useState("");
   const [exchange, setExchange] = useState(false);
   const [allowTry, setAllowTry] = useState(false);
+  const [isFragile, setIsFragile] = useState(false);
   const [liabilityAccepted, setLiabilityAccepted] = useState(false);
   const [productType, setProductType] = useState("");
   const [productTypeOther, setProductTypeOther] = useState("");
@@ -197,6 +198,7 @@ export function CreateParcelWizard({
     setPhone2("");
     setExchange(false);
     setAllowTry(false);
+    setIsFragile(false);
     setLiabilityAccepted(false);
     setProductType("");
     setProductTypeOther("");
@@ -427,6 +429,7 @@ export function CreateParcelWizard({
         ...(showModes ? { mode: deliveryMode } : {}),
         allowOpen: allowTry,
         tryProduct: allowTry,
+        isFragile,
         liabilityAcceptedAt: allowTry ? new Date().toISOString() : undefined,
         isExchange: exchange,
         exchangeNotes: exchange ? exchangeNotes : undefined,
@@ -1053,6 +1056,8 @@ export function CreateParcelWizard({
                     <ParcelOptionsBlock
                       allowTry={allowTry}
                       setAllowTry={setAllowTry}
+                      isFragile={isFragile}
+                      setIsFragile={setIsFragile}
                       liabilityAccepted={liabilityAccepted}
                       setLiabilityAccepted={setLiabilityAccepted}
                       exchange={exchange}
@@ -1154,6 +1159,8 @@ export function CreateParcelWizard({
                 <ParcelOptionsBlock
                   allowTry={allowTry}
                   setAllowTry={setAllowTry}
+                  isFragile={isFragile}
+                  setIsFragile={setIsFragile}
                   liabilityAccepted={liabilityAccepted}
                   setLiabilityAccepted={setLiabilityAccepted}
                   exchange={exchange}
@@ -1218,7 +1225,8 @@ export function CreateParcelWizard({
               </ReviewCard>
               <ReviewCard title="Options">
                 <p className="text-ops-ink/70">
-                  Essai : {allowTry ? "Oui" : "Non"}
+                  Essai : {allowTry ? "Oui" : "Non"} · Fragile :{" "}
+                  {isFragile ? "Oui" : "Non"}
                 </p>
                 <p className="text-ops-ink/70">
                   Échange : {exchange ? "Oui" : "Non"}
@@ -1251,6 +1259,8 @@ export function CreateParcelWizard({
 function ParcelOptionsBlock({
   allowTry,
   setAllowTry,
+  isFragile,
+  setIsFragile,
   liabilityAccepted,
   setLiabilityAccepted,
   exchange,
@@ -1261,6 +1271,8 @@ function ParcelOptionsBlock({
 }: {
   allowTry: boolean;
   setAllowTry: (v: boolean) => void;
+  isFragile: boolean;
+  setIsFragile: (v: boolean) => void;
   liabilityAccepted: boolean;
   setLiabilityAccepted: (v: boolean) => void;
   exchange: boolean;
@@ -1301,6 +1313,36 @@ function ParcelOptionsBlock({
               Oui
             </label>
           </div>
+        </fieldset>
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium text-ops-ink">
+            Colis fragile
+          </legend>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="isFragile"
+                value="Non"
+                checked={!isFragile}
+                onChange={() => setIsFragile(false)}
+              />
+              Non
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="isFragile"
+                value="Oui"
+                checked={isFragile}
+                onChange={() => setIsFragile(true)}
+              />
+              Oui
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-ops-ink/45">
+            Affiché sur le bordereau — manipulation soignée.
+          </p>
         </fieldset>
         <fieldset>
           <legend className="mb-2 text-sm font-medium text-ops-ink">
