@@ -12,6 +12,7 @@ import {
   Palette,
   RefreshCw,
   Route,
+  Scale,
   ScanLine,
   Settings,
   Ticket,
@@ -24,22 +25,25 @@ import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 
 export type PortalNavDef = {
   href: string;
-  label: string;
+  /** i18n key under `nav.*` */
+  labelKey: string;
   icon: LucideIcon;
   /** Shown as a primary bottom-tab item on mobile. */
   mobilePrimary?: boolean;
+  /** Open in-place UI instead of navigating (e.g. create parcel modal). */
+  action?: "create-parcel";
 };
 
 function withMessages(base: string, items: PortalNavDef[]): PortalNavDef[] {
   const settingsIdx = items.findIndex(
     (i) =>
       i.href.endsWith("/settings") ||
-      i.label === "Profil" ||
-      i.label === "Paramètres",
+      i.labelKey === "nav.profile" ||
+      i.labelKey === "nav.settings",
   );
   const msg: PortalNavDef = {
     href: `${base}/messages`,
-    label: "Messages",
+    labelKey: "nav.messages",
     icon: MessageSquare,
   };
   if (settingsIdx >= 0) {
@@ -53,260 +57,304 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
 
   if (role === "LIVREUR") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.today", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
-        label: "Colis",
+        labelKey: "nav.parcels",
         icon: Package,
         mobilePrimary: true,
       },
       {
-        href: `${base}/zones`,
-        label: "Zones",
-        icon: MapPin,
+        href: `${base}/versement`,
+        labelKey: "nav.versement",
+        icon: Banknote,
         mobilePrimary: true,
       },
-      {
-        href: `${base}/scanner`,
-        label: "Scanner",
-        icon: ScanLine,
-      },
-      {
-        href: `${base}/settings`,
-        label: "Profil",
-        icon: Settings,
-      },
+      { href: `${base}/zones`, labelKey: "nav.zones", icon: MapPin },
+      { href: `${base}/scanner`, labelKey: "nav.scanner", icon: ScanLine },
+      { href: `${base}/settings`, labelKey: "nav.profile", icon: Settings },
     ]);
   }
 
   if (role === "CLIENT") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
-        label: "Colis",
+        labelKey: "nav.parcels",
         icon: Package,
         mobilePrimary: true,
       },
       {
-        href: `${base}/scanner`,
-        label: "Scanner",
-        icon: ScanLine,
+        href: "/track",
+        labelKey: "nav.track",
+        icon: Route,
         mobilePrimary: true,
       },
+      { href: `${base}/scanner`, labelKey: "nav.scanner", icon: ScanLine },
       {
         href: `${base}/tickets`,
-        label: "Tickets",
+        labelKey: "nav.tickets",
         icon: Ticket,
         mobilePrimary: true,
       },
-      {
-        href: `${base}/settings`,
-        label: "Profil",
-        icon: Settings,
-      },
+      { href: `${base}/settings`, labelKey: "nav.profile", icon: Settings },
     ]);
   }
 
   if (role === "EXPEDITEUR") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
-        label: "Colis",
+        labelKey: "nav.parcels",
         icon: Package,
         mobilePrimary: true,
       },
       {
         href: `${base}/nouveau`,
-        label: "Nouveau",
+        labelKey: "nav.nouveau",
         icon: Box,
         mobilePrimary: true,
+        action: "create-parcel",
       },
       {
         href: `${base}/scanner`,
-        label: "Scanner",
+        labelKey: "nav.scanner",
         icon: ScanLine,
         mobilePrimary: true,
       },
-      { href: `${base}/payments`, label: "Paiements", icon: CreditCard },
-      { href: `${base}/retours`, label: "Retours", icon: RefreshCw },
+      { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
+      {
+        href: `${base}/tickets`,
+        labelKey: "nav.tickets",
+        icon: Ticket,
+      },
       {
         href: `${base}/manifestes`,
-        label: "Manifestes",
+        labelKey: "nav.manifestes",
         icon: ClipboardList,
       },
-      { href: `${base}/adresses`, label: "Adresses", icon: MapPin },
-      { href: `${base}/analytics`, label: "Rapports", icon: BarChart3 },
-      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
 
   if (role === "SUPPORT") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/retours`,
-        label: "Retours",
+        labelKey: "nav.retours",
         icon: RefreshCw,
         mobilePrimary: true,
       },
       {
         href: `${base}/tickets`,
-        label: "Tickets",
+        labelKey: "nav.tickets",
         icon: Ticket,
         mobilePrimary: true,
       },
       {
         href: `${base}/scanner`,
-        label: "Scanner",
+        labelKey: "nav.scanner",
         icon: ScanLine,
         mobilePrimary: true,
       },
-      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
 
   if (role === "PICKUP") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
-        label: "Colis",
+        labelKey: "nav.parcels",
         icon: Package,
         mobilePrimary: true,
       },
       {
         href: `${base}/manifestes`,
-        label: "Manifestes",
+        labelKey: "nav.manifestes",
         icon: ClipboardList,
         mobilePrimary: true,
       },
       {
         href: `${base}/scanner`,
-        label: "Scanner",
+        labelKey: "nav.scanner",
         icon: ScanLine,
         mobilePrimary: true,
       },
-      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
 
   if (role === "MAGASINIER") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
-        label: "Colis",
+        labelKey: "nav.parcels",
         icon: Package,
         mobilePrimary: true,
       },
       {
-        href: `${base}/retours`,
-        label: "Retours",
-        icon: RefreshCw,
+        href: `${base}/cloture`,
+        labelKey: "nav.cloture",
+        icon: Scale,
         mobilePrimary: true,
       },
+      { href: `${base}/retours`, labelKey: "nav.retours", icon: RefreshCw },
       {
         href: `${base}/scanner`,
-        label: "Scanner",
+        labelKey: "nav.scanner",
         icon: ScanLine,
         mobilePrimary: true,
       },
-      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
 
   if (role === "CHEF_AGENCE") {
     return withMessages(base, [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
-        label: "Colis",
+        labelKey: "nav.parcels",
         icon: Package,
         mobilePrimary: true,
       },
       {
-        href: `${base}/scanner`,
-        label: "Scanner",
-        icon: ScanLine,
+        href: `${base}/caisses`,
+        labelKey: "nav.caisses",
+        icon: Banknote,
         mobilePrimary: true,
       },
       {
-        href: `${base}/dispatch`,
-        label: "Livraisons",
-        icon: Truck,
+        href: `${base}/payments`,
+        labelKey: "nav.payments",
+        icon: CreditCard,
         mobilePrimary: true,
       },
-      { href: `${base}/analytics`, label: "Rapports", icon: BarChart3 },
-      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+      { href: `${base}/scanner`, labelKey: "nav.scanner", icon: ScanLine },
+      { href: `${base}/dispatch`, labelKey: "nav.dispatch", icon: Truck },
+      { href: `${base}/analytics`, labelKey: "nav.analytics", icon: BarChart3 },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
 
-  if (role === "FINANCE") {
+  if (role === "EXPERT_COMPTABLE") {
     return [
-      { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
-        href: `${base}/payments`,
-        label: "Paiements",
-        icon: CreditCard,
+        href: `${base}/caisses`,
+        labelKey: "nav.caisses",
+        icon: Banknote,
         mobilePrimary: true,
       },
       {
         href: `${base}/caissier`,
-        label: "Caisse COD",
+        labelKey: "nav.caissier",
+        icon: CreditCard,
+        mobilePrimary: true,
+      },
+      { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
+      {
+        href: `${base}/modeles-pdf`,
+        labelKey: "nav.mockDocs",
+        icon: ClipboardList,
+      },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
+    ];
+  }
+
+  if (role === "FINANCE") {
+    return [
+      { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
+      {
+        href: `${base}/caisses`,
+        labelKey: "nav.caisses",
         icon: Banknote,
         mobilePrimary: true,
       },
-      { href: `${base}/settings`, label: "Paramètres", icon: Settings },
+      {
+        href: `${base}/caissier`,
+        labelKey: "nav.caissier",
+        icon: CreditCard,
+        mobilePrimary: true,
+      },
+      {
+        href: `${base}/payments`,
+        labelKey: "nav.payments",
+        icon: CreditCard,
+        mobilePrimary: true,
+      },
+      { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ];
   }
 
   const items: PortalNavDef[] = [
-    { href: base, label: "Accueil", icon: Home, mobilePrimary: true },
+    { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
     {
       href: `${base}/parcels`,
-      label: "Colis",
+      labelKey: "nav.parcels",
       icon: Package,
       mobilePrimary: true,
     },
     {
       href: `${base}/scanner`,
-      label: "Scanner",
+      labelKey: "nav.scanner",
       icon: ScanLine,
       mobilePrimary: true,
     },
     {
       href: `${base}/dispatch`,
-      label: "Livraisons",
+      labelKey: "nav.dispatch",
       icon: Truck,
       mobilePrimary: true,
     },
-    { href: `${base}/payments`, label: "Paiements", icon: CreditCard },
-    { href: `${base}/users`, label: "Utilisateurs", icon: Users },
-    { href: `${base}/analytics`, label: "Rapports", icon: BarChart3 },
-    { href: `${base}/zones`, label: "Entrepôt", icon: Warehouse },
+    { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
+    { href: `${base}/users`, labelKey: "nav.users", icon: Users },
+    { href: `${base}/analytics`, labelKey: "nav.analytics", icon: BarChart3 },
+    { href: `${base}/zones`, labelKey: "nav.warehouse", icon: Warehouse },
   ];
 
   if (role === "SUPER_ADMIN") {
     items.push({
       href: `${base}/agencies`,
-      label: "Agences",
+      labelKey: "nav.agencies",
       icon: Building2,
     });
     items.push({
       href: `${base}/routes`,
-      label: "Auto lieux",
+      labelKey: "nav.routes",
       icon: Route,
     });
     items.push({
       href: `${base}/categories`,
-      label: "Catégories",
+      labelKey: "nav.categories",
       icon: Palette,
+    });
+    items.push({
+      href: `${base}/modeles-pdf`,
+      labelKey: "nav.mockDocs",
+      icon: ClipboardList,
     });
   }
 
-  items.push({ href: `${base}/settings`, label: "Paramètres", icon: Settings });
+  if (role === "ADMIN") {
+    items.push({
+      href: `${base}/modeles-pdf`,
+      labelKey: "nav.mockDocs",
+      icon: ClipboardList,
+    });
+  }
+
+  items.push({
+    href: `${base}/settings`,
+    labelKey: "nav.settings",
+    icon: Settings,
+  });
   return withMessages(base, items);
 }
 

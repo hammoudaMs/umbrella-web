@@ -25,7 +25,7 @@ import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import type { Driver, Parcel, Zone } from "@/lib/domain";
 import { canSeeDeliveryMode } from "@/lib/roles";
-import { STATUS_META, type StatusKey } from "@/lib/status-meta";
+import { useStatusLabel } from "@/i18n/hooks";
 import {
   requiresComment,
   selectableStatuses,
@@ -38,11 +38,9 @@ const ACTIVE_STATUSES = ["A_ENLEVER", "ENLEVES", "AU_DEPOT", "EN_COURS", "A_VERI
 
 type DispatchSortKey = "code" | "recipientName" | "status" | "driver";
 
-const DISPATCH_SORT = {
+const DISPATCH_SORT_BASE = {
   code: (p: Parcel) => p.code ?? "",
   recipientName: (p: Parcel) => p.recipientName,
-  status: (p: Parcel) =>
-    STATUS_META[p.status as StatusKey]?.label ?? p.status,
   driver: (p: Parcel) => p.driver?.name ?? "",
 } as const;
 
@@ -52,6 +50,14 @@ const selectClass = cn(inputClass, "h-8 w-auto py-1 text-xs");
 
 export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) {
   const { session } = useAuth();
+  const statusLabelFn = useStatusLabel();
+  const dispatchSort = useMemo(
+    () => ({
+      ...DISPATCH_SORT_BASE,
+      status: (p: Parcel) => statusLabelFn(p.status),
+    }),
+    [statusLabelFn],
+  );
   const showModes = canSeeDeliveryMode(session?.user.role);
   const request = useApi();
   const toast = useToast();
@@ -93,7 +99,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
   const { sorted: visible, sortKey, sortDir, toggleSort } = useTableSort<
     Parcel,
     DispatchSortKey
-  >(filtered, DISPATCH_SORT, "code");
+  >(filtered, dispatchSort, "code");
 
   const role = (session?.user.role ?? "LIVREUR") as AppRole;
 
@@ -134,7 +140,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
     let comment: string | undefined;
     if (requiresComment(status, parcel.status)) {
       const typed = window.prompt(
-        `Motif pour « ${STATUS_META[status as StatusKey]?.label ?? status} »`,
+        `Motif pour « ${statusLabelFn(status)} »`,
       );
       if (typed == null || !typed.trim()) {
         toast.info("Statut annulé", "Un motif est obligatoire");
@@ -149,7 +155,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
         comment,
       });
       toast.success(
-        `${parcel.code ?? `#${parcel.id}`} → ${STATUS_META[status as StatusKey]?.label ?? status}`,
+        `${parcel.code ?? `#${parcel.id}`} → ${statusLabelFn(status)}`,
       );
       await parcelsQuery.reload();
     } catch (err) {
@@ -223,7 +229,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
       >
         {options.map((s) => (
           <option key={s} value={s}>
-            {STATUS_META[s].label}
+            {statusLabelFn(s)}
           </option>
         ))}
       </select>
@@ -300,7 +306,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
           renderItem={(p) => (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ops-card bg-ops-surface px-4 py-3">
               <div className="min-w-0">
-                <p className="font-mono text-xs font-semibold text-ops-accent">{p.code}</p>
+                <p className="font-mono text-xs font-semibold text-ops-accent keep-ltr">{p.code}</p>
                 <p className="font-semibold text-ops-ink">{p.recipientName}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <StatusBadge status={p.status} />
@@ -350,7 +356,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                 {visible.map((p) => (
                   <li key={p.id} className="space-y-3 px-4 py-3.5">
                     <div className="min-w-0">
-                      <p className="font-mono text-[13px] font-bold text-ops-ink">
+                      <p className="font-mono text-[13px] font-bold text-ops-ink keep-ltr">
                         {p.code ?? `#${p.id}`}
                       </p>
                       {showModes ? (
@@ -415,7 +421,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                   {visible.map((p) => (
                     <tr key={p.id} className={trClass}>
                       <td className={tdClass}>
-                        <p className="font-mono text-xs font-semibold text-ops-ink">
+                        <p className="font-mono text-xs font-semibold text-ops-ink keep-ltr">
                           {p.code}
                         </p>
                         {showModes ? (

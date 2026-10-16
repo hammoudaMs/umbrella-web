@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { MotionPathPlugin } from "gsap/MotionPathPlugin";
@@ -12,14 +12,26 @@ import {
   Package,
   ShieldCheck,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { JourneyTruck } from "@/components/landing/JourneyTruck";
 import {
   DepotIllustration,
   HomeIllustration,
 } from "@/components/landing/JourneyLandmarks";
+import { JOURNEY_STEP_KEYS } from "@/components/landing/landing-data";
+import { useT } from "@/i18n/locale-context";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger, MotionPathPlugin);
+
+const STEP_ICONS: Record<(typeof JOURNEY_STEP_KEYS)[number]["icon"], LucideIcon> = {
+  pickup: Package,
+  fast: Zap,
+  local: MapPinned,
+  safe: ShieldCheck,
+  cod: Banknote,
+  ontime: Clock3,
+};
 
 type StepTone = "white" | "cream" | "red" | "ink";
 
@@ -57,61 +69,6 @@ const TONE_CLASS: Record<
   },
 };
 
-/**
- * Cards sit on path milestones (viewBox 1000×360 — compact for one viewport).
- * `at` = truck progress 0→1 when the card should appear.
- */
-const STEPS = [
-  {
-    title: "Pickup",
-    body: "Collecte dès le dépôt.",
-    Icon: Package,
-    tone: "cream" as const,
-    at: 0.1,
-    style: { left: "14%", top: "48%" },
-  },
-  {
-    title: "Rapide",
-    body: "Créneaux & statut live.",
-    Icon: Zap,
-    tone: "red" as const,
-    at: 0.28,
-    style: { left: "33%", top: "6%" },
-  },
-  {
-    title: "Local",
-    body: "Toute la Tunisie, 7j/7.",
-    Icon: MapPinned,
-    tone: "white" as const,
-    at: 0.42,
-    style: { left: "48%", top: "44%" },
-  },
-  {
-    title: "Sûr",
-    body: "Suivi jusqu’à la porte.",
-    Icon: ShieldCheck,
-    tone: "ink" as const,
-    at: 0.56,
-    style: { left: "58%", top: "8%" },
-  },
-  {
-    title: "COD",
-    body: "Encaissement fluide.",
-    Icon: Banknote,
-    tone: "cream" as const,
-    at: 0.72,
-    style: { left: "72%", top: "48%" },
-  },
-  {
-    title: "À l’heure",
-    body: "Jour J, créneau tenu.",
-    Icon: Clock3,
-    tone: "red" as const,
-    at: 0.88,
-    style: { left: "86%", top: "12%" },
-  },
-] as const;
-
 const PATH_D =
   "M50 260 C 160 260, 200 90, 350 90 C 500 90, 530 270, 680 270 C 820 270, 880 130, 950 110";
 
@@ -123,7 +80,18 @@ const NODES = [
 ] as const;
 
 export function LandingScrollJourney() {
+  const t = useT();
   const root = useRef<HTMLElement>(null);
+  const steps = useMemo(
+    () =>
+      JOURNEY_STEP_KEYS.map((step) => ({
+        ...step,
+        title: t(step.titleKey),
+        body: t(step.bodyKey),
+        Icon: STEP_ICONS[step.icon],
+      })),
+    [t],
+  );
 
   useGSAP(
     () => {
@@ -283,7 +251,7 @@ export function LandingScrollJourney() {
               ease: "power1.inOut",
               onUpdate: () => {
                 placeTruck(progress.t);
-                STEPS.forEach((step, i) => {
+                JOURNEY_STEP_KEYS.forEach((step, i) => {
                   if (!revealed.has(i) && progress.t >= step.at) {
                     revealed.add(i);
                     revealStep(i);
@@ -318,7 +286,7 @@ export function LandingScrollJourney() {
       ref={root}
       id="parcours"
       className="relative overflow-hidden bg-[#EFE8E0] py-10 sm:py-12 md:py-14"
-      aria-label="Parcours de livraison"
+      aria-label={t("landing.journeyAria")}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.3]"
@@ -331,27 +299,27 @@ export function LandingScrollJourney() {
       />
 
       <div className="relative mx-auto flex w-full max-w-6xl flex-col px-5 sm:px-6 md:px-10 lg:px-14">
-        <div className="journey-headline relative z-20 mx-auto w-full max-w-xl text-center lg:mx-0 lg:text-left">
+        <div className="journey-headline relative z-20 mx-auto w-full max-w-xl text-center lg:mx-0 lg:text-start">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#991211]/70 sm:text-[11px]">
-            / En route
+            / {t("landing.journeyEyebrow")}
           </p>
           <h2 className="mt-1 font-display text-2xl font-semibold tracking-[-0.03em] text-black sm:text-3xl md:text-[2rem]">
-            Du dépôt à la porte
+            {t("landing.journeyTitle")}
           </h2>
           <p className="mx-auto mt-1 max-w-lg text-[13px] leading-snug text-black/55 sm:text-[14px] lg:mx-0">
-            Pickup, transit, livraison et COD — suivi jusqu’à chez votre client.
+            {t("landing.journeyBody")}
           </p>
         </div>
 
         {/* Mobile — compact centered step list (no overlapping path cards) */}
         <ul className="mt-4 grid grid-cols-2 content-start gap-2 sm:gap-2.5 lg:hidden">
-          {STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const Icon = step.Icon;
             const tone = TONE_CLASS[step.tone];
             const n = String(i + 1).padStart(2, "0");
             return (
               <li
-                key={step.title}
+                key={step.titleKey}
                 className={`journey-mobile-step rounded-xl px-2.5 py-2.5 text-center sm:p-3 ${tone.card}`}
               >
                 <span
@@ -435,13 +403,13 @@ export function LandingScrollJourney() {
           </div>
 
           <div className="pointer-events-none absolute inset-0 z-10">
-            {STEPS.map((step, i) => {
+            {steps.map((step, i) => {
               const Icon = step.Icon;
               const tone = TONE_CLASS[step.tone];
               const n = String(i + 1).padStart(2, "0");
               return (
                 <article
-                  key={step.title}
+                  key={step.titleKey}
                   className={`journey-step journey-step-${i} absolute w-[128px] -translate-x-1/2 rounded-xl p-3 ${tone.card}`}
                   style={step.style}
                 >

@@ -20,6 +20,7 @@ import { formatTnd, type Parcel } from "@/lib/domain";
 import { buildParcours } from "@/lib/parcel-parcours";
 import { useApiQuery } from "@/lib/use-api";
 import { cn } from "@/lib/cn";
+import { useT } from "@/i18n/locale-context";
 
 const IN_TRANSIT = new Set([
   "A_ENLEVER",
@@ -33,6 +34,7 @@ const IN_TRANSIT = new Set([
 ]);
 
 export default function ClientPage() {
+  const t = useT();
   const { data, error, loading, reload } = useApiQuery<Parcel[]>("/parcels");
   const parcels = useMemo(() => data ?? [], [data]);
   const inTransit = parcels.filter((p) => IN_TRANSIT.has(p.status)).length;
@@ -43,10 +45,10 @@ export default function ClientPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <DashboardHero
-        subtitle="Suivez vos colis et contactez le support si besoin."
+        subtitle={t("misc.client.subtitle")}
         actions={[
-          { href: "/client/tickets", label: "Support" },
-          { href: "/track", label: "Suivre un code", primary: true },
+          { href: "/client/tickets", label: t("home.support") },
+          { href: "/track", label: t("misc.client.trackCode"), primary: true },
         ]}
       />
 
@@ -56,27 +58,27 @@ export default function ClientPage() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard
-          label="Colis"
+          label={t("parcels.title")}
           value={parcels.length}
           icon={PackageSearch}
           tone="brand"
         />
-        <StatCard label="En route" value={inTransit} tone="gold" />
-        <StatCard label="Livrés" value={delivered} tone="success" />
+        <StatCard label={t("misc.client.statInTransit")} value={inTransit} tone="gold" />
+        <StatCard label={t("misc.client.statDelivered")} value={delivered} tone="success" />
       </div>
 
       {loading && parcels.length === 0 ? (
-        <LoadingBlock rows={2} label="Chargement…" />
+        <LoadingBlock rows={2} label={t("common.loading")} />
       ) : null}
 
       {!loading && parcels.length === 0 ? (
         <EmptyState
           icon={PackageSearch}
-          title="Aucune livraison"
-          description="Vos colis apparaîtront ici dès qu'un envoi vous est destiné."
+          title={t("misc.client.emptyTitle")}
+          description={t("misc.client.emptyDescription")}
           action={
             <Link href="/track" className={buttonClass("secondary")}>
-              Suivre un code
+              {t("misc.client.trackCode")}
             </Link>
           }
         />
@@ -96,10 +98,11 @@ export default function ClientPage() {
                       {p.code}
                     </p>
                     <p className="mt-1 font-display text-lg font-bold text-ink">
-                      {p.designation ?? p.notes ?? "Colis"}
+                      {p.designation ?? p.notes ?? t("misc.client.parcelFallback")}
                     </p>
                     <p className="text-sm text-ink-muted">
-                      {p.city}, {p.governorate} · {formatTnd(p.price)} à payer
+                      {p.city}, {p.governorate} ·{" "}
+                      {t("misc.client.codDue", { amount: formatTnd(p.price) })}
                     </p>
                   </div>
                   <StatusBadge status={p.status} />
@@ -130,19 +133,32 @@ export default function ClientPage() {
                     ))}
                   </ol>
                 </div>
+                {(p.status === "LIVRES" || p.status === "LIVRES_PAYES") ? (
+                  <p className="rounded-xl bg-emerald-500/10 px-3 py-2 text-center text-xs font-semibold text-emerald-800">
+                    {t("track.deliveredBanner")}
+                  </p>
+                ) : null}
                 <div className="flex flex-col items-center gap-2 border-t border-cream pt-3 text-center sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:text-left">
                   <p className="text-xs text-ink-muted">
-                    Mis à jour le{" "}
+                    {t("misc.client.updatedOn")}{" "}
                     {new Date(p.updatedAt ?? p.createdAt).toLocaleDateString(
                       "fr-TN",
                     )}
                   </p>
-                  <Link
-                    href={`/track?code=${encodeURIComponent(p.code ?? "")}`}
-                    className={buttonClass("primary", "sm")}
-                  >
-                    Voir le suivi
-                  </Link>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <Link
+                      href={`/client/tickets?parcelId=${p.id}`}
+                      className={buttonClass("secondary", "sm")}
+                    >
+                      {t("nav.tickets")}
+                    </Link>
+                    <Link
+                      href={`/track?code=${encodeURIComponent(p.code ?? "")}`}
+                      className={buttonClass("primary", "sm")}
+                    >
+                      {t("misc.client.viewTracking")}
+                    </Link>
+                  </div>
                 </div>
               </Panel>
             </li>
@@ -153,7 +169,7 @@ export default function ClientPage() {
       <div className="flex justify-center">
         <Link href="/client/tickets" className={buttonClass("secondary")}>
           <LifeBuoy className="h-4 w-4" aria-hidden />
-          Ouvrir un ticket
+          {t("home.openTicket")}
         </Link>
       </div>
 

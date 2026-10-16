@@ -33,6 +33,7 @@ import {
   type TicketStatus,
 } from "@/lib/domain";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
+import { useT } from "@/i18n/locale-context";
 import { useApi, useApiQuery } from "@/lib/use-api";
 
 type TicketSortKey = "title" | "parcel" | "status" | "createdAt";
@@ -77,6 +78,7 @@ export function TicketsManager({
   defaultParcelId?: number;
 }) {
   const request = useApi();
+  const t = useT();
   const toast = useToast();
   const { data, error, loading, reload } = useApiQuery<Ticket[]>("/tickets");
   const { data: parcelData } = useApiQuery<Parcel[]>(canCreate ? "/parcels" : null);
@@ -197,7 +199,7 @@ export function TicketsManager({
   function actions(ticket: Ticket) {
     const busy = busyId === ticket.id;
     return (
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap gap-2 md:justify-end">
         {canResolve && ticket.status === "EN_COURS" ? (
           <Button
             size="sm"
@@ -288,93 +290,143 @@ export function TicketsManager({
             />
           </div>
         ) : (
-          <table className={tableClass}>
-            <thead className={theadClass}>
-              <tr>
-                <SortableTh
-                  label="Ticket"
-                  column="title"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Colis"
-                  column="parcel"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Statut"
-                  column="status"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Ouvert le"
-                  column="createdAt"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                  className="hidden md:table-cell"
-                />
-                <th className={`${thClass} text-right`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="space-y-3 p-3 md:hidden">
               {visible.map((t) => (
-                <tr key={t.id} className={trClass}>
-                  <td className={tdClass}>
-                    <button
-                      type="button"
-                      onClick={() => setSelected(t)}
-                      className="text-left"
-                    >
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge tone={KIND_TONE[ticketKind(t)]} className="text-[10px]">
-                          {TICKET_KIND_LABEL[ticketKind(t)]}
-                        </Badge>
-                        <p className="font-semibold text-ops-ink hover:text-ops-accent">
-                          #{t.id} · {t.title}
-                        </p>
-                      </div>
-                      {t.requestedPrice != null ? (
-                        <p className="mt-0.5 text-xs font-semibold text-ops-accent">
-                          Prix demandé : {formatTnd(t.requestedPrice)}
-                        </p>
-                      ) : null}
-                      {t.description ? (
-                        <p className="max-w-md truncate text-xs text-ops-ink/50">
-                          {t.description}
-                        </p>
-                      ) : null}
-                      {t.createdBy ? (
-                        <p className="text-[11px] text-ops-ink/50">
-                          par {t.createdBy.name}
-                        </p>
-                      ) : null}
-                    </button>
-                  </td>
-                  <td className={`${tdClass} font-mono text-xs text-ops-ink/50`}>
-                    {t.parcel?.code ?? "—"}
-                  </td>
-                  <td className={tdClass}>
-                    <Badge tone={STATUS_TONE[t.status]} dot>
-                      {STATUS_LABEL[t.status]}
-                    </Badge>
-                  </td>
-                  <td
-                    className={`${tdClass} hidden whitespace-nowrap text-ops-ink/50 md:table-cell`}
+                <li
+                  key={t.id}
+                  className="space-y-3 rounded-2xl border border-ops-card bg-ops-page/40 px-3.5 py-3.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelected(t)}
+                    className="w-full text-left"
                   >
-                    {new Date(t.createdAt).toLocaleDateString("fr-TN")}
-                  </td>
-                  <td className={tdClass}>{actions(t)}</td>
-                </tr>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={KIND_TONE[ticketKind(t)]} className="text-[10px]">
+                        {TICKET_KIND_LABEL[ticketKind(t)]}
+                      </Badge>
+                      <Badge tone={STATUS_TONE[t.status]} dot>
+                        {STATUS_LABEL[t.status]}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 font-semibold text-ops-ink">
+                      #{t.id} · {t.title}
+                    </p>
+                    <p className="mt-1 text-[12px] text-ops-ink/45">
+                      {[
+                        t.parcel?.code ?? null,
+                        new Date(t.createdAt).toLocaleDateString("fr-TN"),
+                        t.createdBy?.name ? `par ${t.createdBy.name}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    {t.requestedPrice != null ? (
+                      <p className="mt-1 text-xs font-semibold text-ops-accent">
+                        Prix demandé : {formatTnd(t.requestedPrice)}
+                      </p>
+                    ) : null}
+                    {t.description ? (
+                      <p className="mt-1 line-clamp-2 text-xs text-ops-ink/50">
+                        {t.description}
+                      </p>
+                    ) : null}
+                  </button>
+                  {actions(t)}
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+            <div className="hidden md:block">
+              <table className={tableClass}>
+                <thead className={theadClass}>
+                  <tr>
+                    <SortableTh
+                      label="Ticket"
+                      column="title"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Colis"
+                      column="parcel"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Statut"
+                      column="status"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Ouvert le"
+                      column="createdAt"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <th className={`${thClass} text-right`}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((t) => (
+                    <tr key={t.id} className={trClass}>
+                      <td className={tdClass}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(t)}
+                          className="text-left"
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge
+                              tone={KIND_TONE[ticketKind(t)]}
+                              className="text-[10px]"
+                            >
+                              {TICKET_KIND_LABEL[ticketKind(t)]}
+                            </Badge>
+                            <p className="font-semibold text-ops-ink hover:text-ops-accent">
+                              #{t.id} · {t.title}
+                            </p>
+                          </div>
+                          {t.requestedPrice != null ? (
+                            <p className="mt-0.5 text-xs font-semibold text-ops-accent">
+                              Prix demandé : {formatTnd(t.requestedPrice)}
+                            </p>
+                          ) : null}
+                          {t.description ? (
+                            <p className="max-w-md truncate text-xs text-ops-ink/50">
+                              {t.description}
+                            </p>
+                          ) : null}
+                          {t.createdBy ? (
+                            <p className="text-[11px] text-ops-ink/50">
+                              par {t.createdBy.name}
+                            </p>
+                          ) : null}
+                        </button>
+                      </td>
+                      <td className={`${tdClass} font-mono text-xs text-ops-ink/50`}>
+                        {t.parcel?.code ?? "—"}
+                      </td>
+                      <td className={tdClass}>
+                        <Badge tone={STATUS_TONE[t.status]} dot>
+                          {STATUS_LABEL[t.status]}
+                        </Badge>
+                      </td>
+                      <td className={`${tdClass} whitespace-nowrap text-ops-ink/50`}>
+                        {new Date(t.createdAt).toLocaleDateString("fr-TN")}
+                      </td>
+                      <td className={tdClass}>{actions(t)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </TableCard>
 
@@ -391,7 +443,7 @@ export function TicketsManager({
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="secondary" onClick={() => setCreating(false)}>
-              Annuler
+              {t("common.cancel")}
             </Button>
             <Button type="submit" form="ticket-create-form" loading={saving}>
               Ouvrir le ticket

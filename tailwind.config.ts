@@ -41,8 +41,17 @@ const config: Config = {
         ops: "var(--ops-shadow)",
       },
       fontFamily: {
-        display: ["var(--font-display)", "serif"],
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: [
+          "var(--font-display)",
+          "var(--font-arabic)",
+          "serif",
+        ],
+        sans: [
+          "var(--font-sans)",
+          "var(--font-arabic)",
+          "system-ui",
+          "sans-serif",
+        ],
       },
     },
   },

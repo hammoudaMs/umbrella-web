@@ -20,7 +20,15 @@ import { CameraBarcodePanel } from "@/components/CameraBarcodePanel";
 import { DashboardHero } from "@/components/DashboardHero";
 import { ParcelBarcode } from "@/components/ParcelBarcode";
 import { TypeaheadSelect } from "@/components/TypeaheadSelect";
-import { Badge, Button, Panel, SelectField, buttonClass } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorBanner,
+  Panel,
+  SelectField,
+  buttonClass,
+} from "@/components/ui";
 import { useConfirm, useToast } from "@/components/Feedback";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 import { useAuth } from "@/lib/auth-context";
@@ -58,6 +66,8 @@ import {
 } from "@/lib/scan-doublon";
 import { useHidScanner } from "@/lib/use-hid-scanner";
 import { cn } from "@/lib/cn";
+import { useStatusLabel } from "@/i18n/hooks";
+import { useT } from "@/i18n/locale-context";
 
 type StepChoice = "AUTO" | StatusKey;
 
@@ -113,16 +123,22 @@ export function ScannerPage({ role }: { role: AppRole }) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const { session } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const inflight = useRef(false);
   const caseRef = useRef<ScanCase | null>(null);
   const livreurRef = useRef<DriverOption | null>(null);
   const stepRef = useRef<StepChoice>("AUTO");
+  const bundleRef = useRef<ScanBundle | null>(null);
+  const verifiedRef = useRef<number[]>([]);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [parcel, setParcel] = useState<Parcel | null>(null);
   const [bundle, setBundle] = useState<ScanBundle | null>(null);
+  /** Parcel ids verified one-by-one inside the open manifesto / lot session. */
+  const [verifiedIds, setVerifiedIds] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
@@ -160,6 +176,17 @@ export function ScannerPage({ role }: { role: AppRole }) {
     [canMutate, role],
   );
 
+  useEffect(() => {
+    if (selectedCaseId) return;
+    if (role === "PICKUP" || role === "MAGASINIER") {
+      const depot = availableCases.find((c) => c.id === "ENTREE_DEPOT");
+      if (depot) {
+        setSelectedCaseId(depot.id);
+        setSelectedStep("AUTO");
+      }
+    }
+  }, [availableCases, role, selectedCaseId]);
+
   const selectedCase = useMemo(
     () => availableCases.find((c) => c.id === selectedCaseId) ?? null,
     [availableCases, selectedCaseId],
@@ -169,6 +196,15 @@ export function ScannerPage({ role }: { role: AppRole }) {
   livreurRef.current = selectedLivreur;
   stepRef.current = selectedStep;
   machineListening.current = machineTest.phase === "listening";
+  bundleRef.current = bundle;
+  verifiedRef.current = verifiedIds;
+
+  const verifyProgress = useMemo(() => {
+    if (!bundle) return null;
+    const total = bundle.parcels.length;
+    const done = verifiedIds.length;
+    return { total, done, complete: total > 0 && done >= total };
+  }, [bundle, verifiedIds]);
 
   const progress = useMemo(
     () =>
@@ -381,7 +417,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
 
       if (!next) {
         reportDuplicate(
-          `${target.code ?? "Ce colis"} est déjà traité pour ce parcours (${STATUS_META[target.status as StatusKey]?.label ?? target.status}).`,
+          `${target.code ?? "Ce colis"} est déjà traité pour ce parcours (${statusLabel(target.status)}).`,
         );
         return target;
       }
@@ -417,8 +453,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
         return null;
       }
 
-      const currentLabel =
-        STATUS_META[target.status as StatusKey]?.label ?? target.status;
+      const currentLabel = statusLabel(target.status);
       const nextLbl = stepLabel(next);
       const aligned = isExpectedCaseStep(scanCase, target.status, next);
 
@@ -431,8 +466,8 @@ export function ScannerPage({ role }: { role: AppRole }) {
         const first = await confirm({
           title: "Étape incorrecte pour ce parcours",
           description: `Le colis est « ${currentLabel} », mais l’étape choisie / cas (« ${scanCase.label} ») appliquerait « ${nextLbl} ». Continuer quand même ?`,
-          confirmLabel: "Continuer",
-          cancelLabel: "Annuler",
+          confirmLabel: t("common.confirm"),
+          cancelLabel: t("common.cancel"),
           tone: "danger",
         });
         if (!first) {
@@ -446,8 +481,8 @@ export function ScannerPage({ role }: { role: AppRole }) {
         const second = await confirm({
           title: "Deuxième confirmation",
           description: `Confirmez vraiment le passage de « ${currentLabel} » vers « ${nextLbl} » pour ${target.code ?? "ce colis"}.`,
-          confirmLabel: "Oui, appliquer",
-          cancelLabel: "Non",
+          confirmLabel: t("common.confirm"),
+          cancelLabel: t("common.no"),
           tone: "danger",
         });
         if (!second) {
@@ -508,6 +543,8 @@ export function ScannerPage({ role }: { role: AppRole }) {
       buildCaseComment,
       operatorName,
       reportDuplicate,
+      statusLabel,
+      t,
     ],
   );
 
@@ -591,7 +628,6 @@ export function ScannerPage({ role }: { role: AppRole }) {
       inflight.current = true;
       setBusy(true);
       setFeedback(null);
-      setBundle(null);
 
       try {
         let found: Parcel | ScanBundle | null = null;
@@ -620,21 +656,113 @@ export function ScannerPage({ role }: { role: AppRole }) {
         if (isReturnLot(found) || isPickupManifest(found)) {
           setParcel(null);
           setBundle(found);
+          setVerifiedIds([]);
           rememberOpsScanSession(found.code);
           const label = isReturnLot(found)
             ? "Lot retour"
             : `Manifeste ${PICKUP_MANIFEST_KIND_LABEL[found.manifestKind].toLowerCase()}`;
           setFeedback({
-            tone: "ok",
-            title: `${label} · ${found.itemCount} colis`,
-            detail: `${found.code} — ouvrez chaque colis depuis la liste pour le détail / statut.`,
+            tone: "warn",
+            title: `${label} · vérification 0/${found.itemCount}`,
+            detail: t("scanner.verifyStartDetail", {
+              code: found.code,
+              count: found.itemCount,
+            }),
           });
-          toast.success(label, `${found.itemCount} colis`);
+          toast.info(
+            t("scanner.verifySession"),
+            t("scanner.verifyScanEach", { count: found.itemCount }),
+          );
+          return;
+        }
+
+        const openBundle = bundleRef.current;
+        if (openBundle && (isPickupManifest(openBundle) || isReturnLot(openBundle))) {
+          const member = openBundle.parcels.find(
+            (p) =>
+              p.id === found.id ||
+              (p.code &&
+                found.code &&
+                p.code.toLowerCase() === found.code.toLowerCase()),
+          );
+          if (!member) {
+            setFeedback({
+              tone: "error",
+              title: t("scanner.verifyNotInBundle"),
+              detail: t("scanner.verifyNotInBundleDetail", {
+                code: found.code ?? usedCode,
+                bundle: openBundle.code,
+              }),
+            });
+            toast.error(
+              t("scanner.verifyNotInBundle"),
+              found.code ?? usedCode,
+            );
+            return;
+          }
+
+          if (verifiedRef.current.includes(member.id)) {
+            reportDuplicate(
+              t("scanner.verifyAlready", {
+                code: member.code ?? String(member.id),
+              }),
+            );
+            return;
+          }
+
+          let updated: Parcel = found;
+          if (canMutate && activeCase) {
+            inflight.current = false;
+            setBusy(false);
+            const stepped = await applyCaseStep(
+              found,
+              activeCase,
+              activeLivreur,
+            );
+            if (!stepped) return;
+            updated = stepped;
+          }
+
+          const nextVerified = [...verifiedRef.current, member.id];
+          setVerifiedIds(nextVerified);
+          setParcel(updated);
+          setBundle({
+            ...openBundle,
+            parcels: openBundle.parcels.map((p) =>
+              p.id === updated.id ? { ...p, ...updated } : p,
+            ),
+          });
+          rememberOpsScanSession(updated.code ?? usedCode);
+
+          const total = openBundle.parcels.length;
+          const done = nextVerified.length;
+          if (done >= total) {
+            setFeedback({
+              tone: "ok",
+              title: t("scanner.verifyComplete", { done, total }),
+              detail: t("scanner.verifyCompleteDetail"),
+            });
+            toast.success(
+              t("scanner.verifyComplete", { done, total }),
+              openBundle.code,
+            );
+          } else {
+            setFeedback({
+              tone: "ok",
+              title: t("scanner.verifyProgress", { done, total }),
+              detail: `${updated.code ?? usedCode} · ${statusLabel(updated.status)}`,
+            });
+            toast.success(
+              t("scanner.verifyProgress", { done, total }),
+              updated.code ?? usedCode,
+            );
+          }
           return;
         }
 
         setParcel(found);
         setBundle(null);
+        setVerifiedIds([]);
 
         if (role === "EXPEDITEUR") {
           rememberOpsScanSession(found.code ?? usedCode);
@@ -663,11 +791,14 @@ export function ScannerPage({ role }: { role: AppRole }) {
         setFeedback({
           tone: "ok",
           title: "Colis trouvé",
-          detail: `${found.code ?? usedCode} · ${STATUS_META[found.status as StatusKey]?.label ?? found.status}`,
+          detail: `${found.code ?? usedCode} · ${statusLabel(found.status)}`,
         });
       } catch (err) {
         setParcel(null);
-        setBundle(null);
+        if (!bundleRef.current) {
+          setBundle(null);
+          setVerifiedIds([]);
+        }
         const msg = err instanceof Error ? err.message : "Introuvable";
         const isDup =
           (err instanceof ApiError && err.status === 409) ||
@@ -706,6 +837,8 @@ export function ScannerPage({ role }: { role: AppRole }) {
       completeMachineTest,
       fetchScanTarget,
       reportDuplicate,
+      statusLabel,
+      t,
     ],
   );
 
@@ -746,6 +879,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
     setSelectedStep("AUTO");
     setParcel(null);
     setBundle(null);
+    setVerifiedIds([]);
     setFeedback({
       tone: "warn",
       title: scanCase.label,
@@ -785,11 +919,12 @@ export function ScannerPage({ role }: { role: AppRole }) {
             <ScanLine className="h-7 w-7" />
           </span>
           <h1 className="mt-3 font-display text-xl font-bold text-ops-ink">
-            Scanner rapide
+            {t("scanner.title")}
           </h1>
           <p className="mt-1 max-w-md text-sm text-ops-ink/50">
-            Douchette ou caméra — lecture immédiate. Un lot retour affiche tous
-            ses colis. Parcours optionnel pour avancer un statut.
+            {role === "PICKUP"
+              ? t("scanner.pickupSubtitle")
+              : "Douchette ou caméra — lecture immédiate. Un lot retour affiche tous ses colis. Parcours optionnel pour avancer un statut."}
           </p>
           <p className="mt-2 flex items-center gap-1.5 text-xs text-ops-ink/40">
             <UserRound className="h-3.5 w-3.5" />
@@ -855,7 +990,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
                   setShowMachineTest(false);
                 }}
               >
-                Annuler
+                {t("common.cancel")}
               </Button>
             ) : machineTest.phase === "ok" ? (
               <>
@@ -915,7 +1050,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
               </p>
               <button
                 type="button"
-                aria-label="Fermer"
+                aria-label={t("common.close")}
                 onClick={() => {
                   stopMachineTest();
                   setShowMachineTest(false);
@@ -932,7 +1067,10 @@ export function ScannerPage({ role }: { role: AppRole }) {
                 className="mx-auto flex w-full max-w-md justify-center [&_svg]:h-auto [&_svg]:w-full"
               />
             </div>
-            <p className="mt-2 text-center font-mono text-xs font-bold text-ops-ink">
+            <p
+              className="keep-ltr mt-2 text-center font-mono text-xs font-bold text-ops-ink"
+              dir="ltr"
+            >
               {MACHINE_TEST_CODE}
             </p>
             {machineTest.phase === "fail" ? (
@@ -1111,8 +1249,9 @@ export function ScannerPage({ role }: { role: AppRole }) {
                     : "Douchette, caméra, ou saisie…"
               }
               disabled={busy && machineTest.phase !== "listening"}
+              dir="ltr"
               className={cn(
-                "mt-1.5 w-full rounded-xl border bg-ops-page px-4 py-3 text-center font-mono text-base outline-none ring-ops-accent focus:ring-2 disabled:opacity-60",
+                "keep-ltr mt-1.5 w-full rounded-xl border bg-ops-page px-4 py-3 text-center font-mono text-base outline-none ring-ops-accent focus:ring-2 disabled:opacity-60",
                 machineTest.phase === "listening"
                   ? "border-amber-500/50"
                   : "border-ops-card",
@@ -1160,7 +1299,9 @@ export function ScannerPage({ role }: { role: AppRole }) {
           />
         ) : null}
 
-        {feedback ? (
+        {feedback?.tone === "error" ? (
+          <ErrorBanner message={`${feedback.title}${feedback.detail ? ` — ${feedback.detail}` : ""}`} />
+        ) : feedback ? (
           <div
             className={cn(
               "flex items-start gap-3 rounded-xl border px-3 py-3 text-sm",
@@ -1168,8 +1309,6 @@ export function ScannerPage({ role }: { role: AppRole }) {
                 "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
               feedback.tone === "warn" &&
                 "border-amber-500/30 bg-amber-500/10 text-amber-100",
-              feedback.tone === "error" &&
-                "border-ops-accent/40 bg-ops-accent/10 text-rose-100",
             )}
           >
             {feedback.tone === "ok" ? (
@@ -1187,6 +1326,14 @@ export function ScannerPage({ role }: { role: AppRole }) {
         ) : null}
       </Panel>
 
+      {!busy && !parcel && !bundle && !feedback ? (
+        <EmptyState
+          icon={ScanLine}
+          title={t("scanner.emptyTitle")}
+          description={t("scanner.emptyBody")}
+        />
+      ) : null}
+
       {bundle ? (
         <Panel className="space-y-4">
           <div className="flex items-start gap-3">
@@ -1194,7 +1341,10 @@ export function ScannerPage({ role }: { role: AppRole }) {
               <Package className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-lg font-bold text-ops-ink">
+              <p
+                className="keep-ltr font-mono text-lg font-bold text-ops-ink"
+                dir="ltr"
+              >
                 {bundle.code}
               </p>
               <p className="text-sm text-ops-ink/70">
@@ -1204,31 +1354,101 @@ export function ScannerPage({ role }: { role: AppRole }) {
                 · {bundle.itemCount} colis
                 {bundle.sender?.name ? ` · ${bundle.sender.name}` : ""}
               </p>
+              {verifyProgress ? (
+                <p className="mt-1 text-xs font-semibold text-ops-accent">
+                  {t("scanner.verifyProgress", {
+                    done: verifyProgress.done,
+                    total: verifyProgress.total,
+                  })}
+                  {verifyProgress.complete
+                    ? ` · ${t("scanner.verifyCompleteShort")}`
+                    : ` · ${t("scanner.verifyHint")}`}
+                </p>
+              ) : null}
             </div>
-            <Badge tone={bundle.status === "OPEN" ? "success" : "neutral"}>
-              {bundle.status === "OPEN" ? "Ouvert" : "Fermé"}
+            <Badge
+              tone={
+                verifyProgress?.complete
+                  ? "success"
+                  : bundle.status === "OPEN"
+                    ? "warning"
+                    : "neutral"
+              }
+            >
+              {verifyProgress?.complete
+                ? t("scanner.verifyCompleteShort")
+                : bundle.status === "OPEN"
+                  ? "Ouvert"
+                  : "Fermé"}
             </Badge>
           </div>
+          {verifyProgress ? (
+            <div className="h-2 overflow-hidden rounded-full bg-ops-card">
+              <div
+                className="h-full rounded-full bg-ops-accent transition-all duration-300"
+                style={{
+                  width: `${verifyProgress.total ? (100 * verifyProgress.done) / verifyProgress.total : 0}%`,
+                }}
+              />
+            </div>
+          ) : null}
           <ul className="divide-y divide-ops-card rounded-xl border border-ops-card">
-            {bundle.parcels.map((p) => (
-              <li key={p.id}>
-                <Link
-                  href={`${base}/parcels/${p.id}`}
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 transition hover:bg-ops-page/80"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-mono text-sm font-semibold text-ops-ink">
-                      {p.code ?? `#${p.id}`}
+            {bundle.parcels.map((p) => {
+              const ok = verifiedIds.includes(p.id);
+              return (
+                <li key={p.id}>
+                  <div
+                    className={cn(
+                      "flex items-center justify-between gap-3 px-3 py-2.5",
+                      ok ? "bg-emerald-500/10" : "bg-transparent",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-start gap-2.5">
+                      {ok ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                      ) : (
+                        <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-ops-ink/25" />
+                      )}
+                      <span className="min-w-0">
+                        <span
+                          className="keep-ltr block truncate font-mono text-sm font-semibold text-ops-ink"
+                          dir="ltr"
+                        >
+                          {p.code ?? `#${p.id}`}
+                        </span>
+                        <span className="block truncate text-xs text-ops-ink/50">
+                          {p.recipientName} · {p.city}
+                        </span>
+                      </span>
                     </span>
-                    <span className="block truncate text-xs text-ops-ink/50">
-                      {p.recipientName} · {p.city}
-                    </span>
-                  </span>
-                  <StatusPill status={p.status} />
-                </Link>
-              </li>
-            ))}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusPill status={p.status} />
+                      <Link
+                        href={`${base}/parcels/${p.id}`}
+                        className="text-[11px] font-semibold text-ops-accent hover:underline"
+                      >
+                        {t("scanner.detail")}
+                      </Link>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            onClick={() => {
+              setBundle(null);
+              setVerifiedIds([]);
+              setParcel(null);
+              setFeedback(null);
+              focusInput();
+            }}
+          >
+            {t("scanner.verifyClose")}
+          </Button>
         </Panel>
       ) : null}
 
@@ -1239,7 +1459,10 @@ export function ScannerPage({ role }: { role: AppRole }) {
               <Package className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-lg font-bold text-ops-ink">
+              <p
+                className="keep-ltr font-mono text-lg font-bold text-ops-ink"
+                dir="ltr"
+              >
                 {parcel.code}
               </p>
               <p className="truncate text-sm text-ops-ink/70">
@@ -1324,7 +1547,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
                                 color: statusMeta.ink ?? "#fff",
                               }}
                             >
-                              {statusMeta.label}
+                              {statusLabel(entry.status!)}
                             </span>
                           ) : null}
                         </div>
@@ -1348,6 +1571,7 @@ export function ScannerPage({ role }: { role: AppRole }) {
 }
 
 function StatusPill({ status }: { status: string }) {
+  const labelOf = useStatusLabel();
   const meta = STATUS_META[status as StatusKey];
   return (
     <span
@@ -1357,7 +1581,7 @@ function StatusPill({ status }: { status: string }) {
         color: meta?.ink ?? "#fff",
       }}
     >
-      {meta?.label ?? status}
+      {labelOf(status)}
     </span>
   );
 }

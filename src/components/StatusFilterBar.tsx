@@ -1,13 +1,69 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, type ComponentType } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { LayoutGrid } from "lucide-react";
+import {
+  Ban,
+  Building2,
+  CheckCircle2,
+  LayoutGrid,
+  Package,
+  PackageCheck,
+  RotateCcw,
+  Truck,
+  UserRound,
+  Hourglass,
+  type LucideProps,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DASHBOARD_STATUS_KEYS } from "@/lib/dashboard-statuses";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 type Countable = { status: string };
+
+const SHORT_LABEL: Partial<Record<StatusKey, string>> = {
+  EN_ATTENTE: "En attente",
+  A_ENLEVER: "En attente",
+  ENLEVES: "Récupéré",
+  AU_DEPOT: "Au dépôt",
+  EXPEDIE_DESTINATION: "Expédié",
+  ARRIVE_DESTINATION: "Destination",
+  AFFECTE_LIVREUR: "Affecté",
+  EN_COURS: "En livraison",
+  LIVRES: "Livré",
+  LIVRES_PAYES: "Payé",
+  LIVRAISON_ANNULEE: "Annulé",
+  RETOUR_DEPOT: "Retour",
+  RETOUR_EXPEDITEURS: "Retour exp.",
+  RETOUR_RECU: "Retour reçu",
+  RETOUR_DEFINITIF: "Retour déf.",
+  RETOUR_INTER_AGENCE: "Inter-agence",
+  A_VERIFIER: "À vérifier",
+  NON_SERIEUX: "Non sérieux",
+};
+
+const STATUS_ICON: Partial<
+  Record<StatusKey, ComponentType<LucideProps>>
+> = {
+  EN_ATTENTE: Hourglass,
+  A_ENLEVER: Hourglass,
+  ENLEVES: PackageCheck,
+  AU_DEPOT: Building2,
+  EXPEDIE_DESTINATION: Truck,
+  ARRIVE_DESTINATION: Building2,
+  AFFECTE_LIVREUR: UserRound,
+  EN_COURS: Truck,
+  LIVRES: CheckCircle2,
+  LIVRES_PAYES: CheckCircle2,
+  LIVRAISON_ANNULEE: Ban,
+  RETOUR_DEPOT: RotateCcw,
+  RETOUR_EXPEDITEURS: RotateCcw,
+  RETOUR_RECU: Package,
+  RETOUR_DEFINITIF: Ban,
+  RETOUR_INTER_AGENCE: RotateCcw,
+  A_VERIFIER: Package,
+  NON_SERIEUX: Ban,
+};
 
 function hexToRgba(hex: string, alpha: number): string {
   const raw = hex.replace("#", "");
@@ -55,32 +111,29 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
       <div
         role="tablist"
         aria-label="Filtrer par statut"
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
       >
-        <StatusCard
+        <FilterChip
           label="Tous"
           count={parcels.length}
           active={!current}
           color="#991211"
           onClick={() => go(null)}
-          icon={<LayoutGrid className="h-4 w-4" strokeWidth={2.25} />}
+          Icon={LayoutGrid}
         />
         {keys.map((key) => {
           const meta = STATUS_META[key];
+          const Icon = STATUS_ICON[key] ?? Package;
           return (
-            <StatusCard
+            <FilterChip
               key={key}
-              label={meta?.label ?? key}
+              label={SHORT_LABEL[key] ?? meta?.label ?? key}
+              title={meta?.label ?? key}
               count={counts.get(key) ?? 0}
               active={current === key}
               color={meta?.color ?? "#64748b"}
-              ink={meta?.ink}
               onClick={() => go(key)}
-              icon={
-                <span className="text-sm leading-none" aria-hidden>
-                  {meta?.emoji ?? "📦"}
-                </span>
-              }
+              Icon={Icon}
             />
           );
         })}
@@ -89,7 +142,7 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
         <button
           type="button"
           onClick={() => go(null)}
-          className="text-xs font-semibold text-ops-ink/45 hover:text-ops-accent"
+          className="text-[11px] font-medium text-ops-ink/40 transition hover:text-ops-accent"
         >
           Effacer le filtre
         </button>
@@ -98,64 +151,68 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
   );
 }
 
-function StatusCard({
+function FilterChip({
   label,
+  title,
   count,
   active,
   color,
-  ink,
   onClick,
-  icon,
+  Icon,
 }: {
   label: string;
+  title?: string;
   count: number;
   active: boolean;
   color: string;
-  ink?: string;
   onClick: () => void;
-  icon: ReactNode;
+  Icon: ComponentType<LucideProps>;
 }) {
   return (
     <button
       type="button"
       role="tab"
+      title={title ?? label}
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative min-h-[4.5rem] overflow-hidden rounded-2xl border bg-ops-surface px-3 py-2.5 text-left transition",
-        "hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
-        active ? "ring-2 ring-ops-accent ring-offset-2 ring-offset-ops-page" : null,
-        count === 0 && !active ? "opacity-55" : null,
+        "flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+        active
+          ? "border-transparent text-ops-ink"
+          : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/15 hover:text-ops-ink",
+        count === 0 && !active ? "opacity-45" : null,
       )}
-      style={{
-        borderColor: hexToRgba(color, active ? 0.55 : 0.28),
-        boxShadow: active
-          ? `0 0 20px ${hexToRgba(color, 0.22)}`
-          : `0 0 0 transparent`,
-      }}
+      style={
+        active
+          ? {
+              backgroundColor: hexToRgba(color, 0.16),
+              boxShadow: `inset 0 0 0 1px ${hexToRgba(color, 0.45)}`,
+            }
+          : undefined
+      }
     >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ backgroundColor: hexToRgba(color, active ? 0.16 : 0.08) }}
+      <span
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+        style={{
+          backgroundColor: hexToRgba(color, active ? 0.28 : 0.14),
+          color,
+        }}
         aria-hidden
-      />
-      <div className="relative flex items-start gap-2.5">
-        <span
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-          style={{ backgroundColor: color, color: ink ?? "#fff" }}
-          aria-hidden
-        >
-          {icon}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] font-semibold leading-tight text-ops-ink/70">
-            {label}
-          </span>
-          <span className="mt-1 block font-display text-xl font-extrabold leading-none tabular-nums tracking-tight text-ops-ink">
-            {count}
-          </span>
-        </span>
-      </div>
+      >
+        <Icon className="h-3.5 w-3.5" strokeWidth={2.25} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-tight tracking-tight">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "shrink-0 font-display text-[14px] font-bold tabular-nums leading-none",
+          active ? "text-ops-ink" : "text-ops-ink/40",
+        )}
+      >
+        {count}
+      </span>
     </button>
   );
 }

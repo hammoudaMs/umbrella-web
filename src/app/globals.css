@@ -125,6 +125,51 @@ html.dark textarea {
   color: rgb(var(--ops-ink-rgb));
 }
 
+/* Role-tenant shell accents (subdomain-ready; each surface keeps its own feel) */
+.portal-shell[data-tenant-shell="money"] {
+  --tenant-accent: #986a36;
+  --tenant-accent-soft: rgb(152 106 54 / 0.12);
+}
+.portal-shell[data-tenant-shell="fleet"] {
+  --tenant-accent: #0f766e;
+  --tenant-accent-soft: rgb(15 118 110 / 0.12);
+}
+.portal-shell[data-tenant-shell="driver"] {
+  --tenant-accent: #991211;
+  --tenant-accent-soft: rgb(153 18 17 / 0.12);
+}
+.portal-shell[data-tenant-shell="sender"] {
+  --tenant-accent: #1d4ed8;
+  --tenant-accent-soft: rgb(29 78 216 / 0.1);
+}
+.portal-shell[data-tenant-shell="recipient"] {
+  --tenant-accent: #b45309;
+  --tenant-accent-soft: rgb(180 83 9 / 0.12);
+}
+.portal-shell[data-tenant-shell="ops"] {
+  --tenant-accent: #991211;
+  --tenant-accent-soft: rgb(153 18 17 / 0.1);
+}
+
+.portal-shell[data-tenant-shell] .portal-sidebar {
+  border-top: 3px solid var(--tenant-accent, #991211);
+}
+
+html.locale-tn {
+  font-family: var(--font-arabic), var(--font-sans), system-ui, sans-serif;
+}
+
+html.locale-tn .font-display {
+  font-family: var(--font-arabic), var(--font-display), sans-serif;
+}
+
+/* Keep codes / scanners LTR inside RTL UI */
+html[dir="rtl"] [data-ltr],
+html[dir="rtl"] .keep-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .portal-header {
   background-color: var(--ops-header);
   border-bottom-color: rgb(var(--ops-ink-rgb) / 0.08);

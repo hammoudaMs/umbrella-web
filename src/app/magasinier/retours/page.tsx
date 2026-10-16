@@ -2,21 +2,24 @@
 
 import { Suspense } from "react";
 import { ParcelsManager } from "@/components/ParcelsManager";
+import { useT } from "@/i18n/locale-context";
 
 function Body() {
+  const t = useT();
   return (
     <ParcelsManager
       returnsOnly
-      title={"Retours à préparer"}
-      description={"Préparer et mettre prêts les retours dépôt"}
-      detailBasePath={"/magasinier/parcels"}
+      title={t("retours.titlePrepare")}
+      description={t("retours.descPrepare")}
+      detailBasePath="/magasinier/parcels"
     />
   );
 }
 
 export default function Page() {
+  const t = useT();
   return (
-    <Suspense fallback={<p className={"text-ink-muted"}>Chargement...</p>}>
+    <Suspense fallback={<p className="text-ink-muted">{t("common.loading")}</p>}>
       <Body />
     </Suspense>
   );

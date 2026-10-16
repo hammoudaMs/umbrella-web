@@ -212,12 +212,7 @@ function reportStyles() {
 }
 
 function openPrintDocument(title: string, bodyHtml: string) {
-  const win = window.open("", "_blank", "noopener,noreferrer,width=1200,height=800");
-  if (!win) {
-    throw new Error("Autorisez les pop-ups pour exporter le PDF.");
-  }
-  win.document.open();
-  win.document.write(`<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
@@ -235,8 +230,17 @@ function openPrintDocument(title: string, bodyHtml: string) {
     });
   </script>
 </body>
-</html>`);
-  win.document.close();
+</html>`;
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    URL.revokeObjectURL(url);
+    throw new Error("Autorisez les pop-ups pour exporter le PDF.");
+  }
+  win.opener = null;
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function downloadParcelsExcel(

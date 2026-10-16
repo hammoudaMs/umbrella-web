@@ -2,7 +2,7 @@ import { z } from "zod";
 import { PRODUCT_TYPES } from "@/lib/product-types";
 import { TUNISIA_GOVERNORATES } from "@/lib/status-meta";
 
-export type SignupRole = "EXPEDITEUR" | "LIVREUR";
+export type SignupRole = "EXPEDITEUR";
 
 export type SignupField =
   | "name"
@@ -48,7 +48,7 @@ export function normalizeEmail(value: string): string {
 }
 
 const baseSchema = z.object({
-  role: z.enum(["EXPEDITEUR", "LIVREUR"]),
+  role: z.literal("EXPEDITEUR"),
   name: z
     .string()
     .trim()
@@ -90,52 +90,48 @@ const baseSchema = z.object({
   productNotes: z.string(),
 });
 
-export const signupSchema = baseSchema
-  .superRefine((data, ctx) => {
-    if (data.password !== data.confirm) {
+export const signupSchema = baseSchema.superRefine((data, ctx) => {
+  if (data.password !== data.confirm) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["confirm"],
+      message: "Les mots de passe ne correspondent pas",
+    });
+  }
+
+  const types = data.productTypes.map((t) => t.trim()).filter(Boolean);
+  if (types.length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["productTypes"],
+      message: "Choisissez au moins un type de produit",
+    });
+  }
+  for (const type of types) {
+    if (!PRODUCT_SET.has(type)) {
       ctx.addIssue({
         code: "custom",
-        path: ["confirm"],
-        message: "Les mots de passe ne correspondent pas",
+        path: ["productTypes"],
+        message: "Type de produit invalide",
       });
+      break;
     }
-
-    if (data.role === "EXPEDITEUR") {
-      const types = data.productTypes
-        .map((t) => t.trim())
-        .filter(Boolean);
-      if (types.length === 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["productTypes"],
-          message: "Choisissez au moins un type de produit",
-        });
-      }
-      for (const type of types) {
-        if (!PRODUCT_SET.has(type)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["productTypes"],
-            message: "Type de produit invalide",
-          });
-          break;
-        }
-      }
-      if (types.includes("Autre") && data.productNotes.trim().length < 2) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["productNotes"],
-          message: "Précisez le type de produit",
-        });
-      }
-    }
-  });
+  }
+  if (types.includes("Autre") && data.productNotes.trim().length < 2) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["productNotes"],
+      message: "Précisez le type de produit",
+    });
+  }
+});
 
 export function validateSignup(
   values: SignupFormValues,
 ): { ok: true; data: SignupFormValues } | { ok: false; errors: SignupFieldErrors } {
   const parsed = signupSchema.safeParse({
     ...values,
+    role: "EXPEDITEUR",
     name: values.name.trim(),
     email: normalizeEmail(values.email),
     phone: digitsOnly(values.phone),
@@ -150,12 +146,8 @@ export function validateSignup(
       ok: true,
       data: {
         ...parsed.data,
-        productTypes:
-          parsed.data.role === "EXPEDITEUR" ? parsed.data.productTypes : [],
-        productNotes:
-          parsed.data.role === "EXPEDITEUR"
-            ? parsed.data.productNotes.trim()
-            : "",
+        productTypes: parsed.data.productTypes,
+        productNotes: parsed.data.productNotes.trim(),
       },
     };
   }

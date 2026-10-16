@@ -28,6 +28,8 @@ export type MockUser = {
   productTypes?: string[];
   productNotes?: string | null;
   createdAt?: string;
+  passwordResetToken?: string | null;
+  passwordResetExpires?: string | null;
 };
 
 export type MockParcel = Parcel & { code: string; price: number };
@@ -158,11 +160,22 @@ export const MOCK_USERS: MockUser[] = [
   },
   {
     id: 11,
-    name: "Finance Umbrella",
+    name: "Responsable Finance Tunis",
     email: "finance@umbrella.tn",
     role: "FINANCE",
     phone: "24000001",
     password: "Finance@12345",
+    isActive: true,
+    approvalStatus: "APPROVED",
+    agencyId: 1,
+  },
+  {
+    id: 12,
+    name: "Expert Comptable",
+    email: "expert@umbrella.tn",
+    role: "EXPERT_COMPTABLE",
+    phone: "24000000",
+    password: "Expert@12345",
     isActive: true,
     approvalStatus: "APPROVED",
   },
@@ -239,7 +252,7 @@ export const MOCK_PARCELS: MockParcel[] = [
     designation: "Parfum",
     status: "EN_ATTENTE",
     mode: "EXTERNAL",
-    bordereauUrl: "https://example.com/bordereau.pdf",
+    bordereauUrl: "/mock-docs/bordereau-colis.pdf",
     createdAt: day(1),
     senderId: 3,
     timeline: [
@@ -364,7 +377,7 @@ export const MOCK_PARCELS: MockParcel[] = [
     notes: "Tablette",
     status: "AU_DEPOT",
     mode: "EXTERNAL",
-    bordereauUrl: "https://example.com/bordereau-ext.pdf",
+    bordereauUrl: "/mock-docs/bordereau-externe.pdf",
     createdAt: day(2),
     senderId: 3,
   },
@@ -597,10 +610,19 @@ export const MOCK_PAYMENTS: MockPayment[] = [
     status: "EN_DEMANDE",
     note: "Demande COD",
     createdAt: day(1),
+    updatedAt: day(1),
     sender: { name: "Demo Expéditeur", email: "expediteur@umbrella.tn" },
     items: [
       { parcel: { id: 3, code: "UMB-LIV-001" }, amount: 45.5 },
       { parcel: { id: 9, code: "UMB-LIVP-001" }, amount: 55 },
+    ],
+    history: [
+      {
+        at: day(1),
+        status: "EN_DEMANDE",
+        label: "Demande créée",
+        actorName: "Demo Expéditeur",
+      },
     ],
   },
   {
@@ -609,8 +631,35 @@ export const MOCK_PAYMENTS: MockPayment[] = [
     status: "PAYE",
     note: "Déjà réglé",
     createdAt: day(7),
+    updatedAt: day(5),
     sender: { name: "Demo Expéditeur", email: "expediteur@umbrella.tn" },
     items: [{ parcel: { id: 9, code: "UMB-LIVP-001" }, amount: 67 }],
+    history: [
+      {
+        at: day(7),
+        status: "EN_DEMANDE",
+        label: "Demande créée",
+        actorName: "Demo Expéditeur",
+      },
+      {
+        at: day(6),
+        status: "VALIDE_FINANCE",
+        label: "Validé finance",
+        actorName: "Finance Umbrella",
+      },
+      {
+        at: day(6),
+        status: "VALIDE_CHEF",
+        label: "Validé chef d’agence",
+        actorName: "Chef Agence",
+      },
+      {
+        at: day(5),
+        status: "PAYE",
+        label: "Versé",
+        actorName: "Chef Agence",
+      },
+    ],
   },
   {
     id: 3,
@@ -618,8 +667,23 @@ export const MOCK_PAYMENTS: MockPayment[] = [
     status: "APPROUVE",
     note: "En attente versement",
     createdAt: day(2),
+    updatedAt: day(2),
     sender: { name: "Demo Expéditeur", email: "expediteur@umbrella.tn" },
     items: [{ parcel: { id: 6, code: "UMB-DEP-001" }, amount: 95 }],
+    history: [
+      {
+        at: day(2),
+        status: "EN_DEMANDE",
+        label: "Demande créée",
+        actorName: "Demo Expéditeur",
+      },
+      {
+        at: day(2),
+        status: "VALIDE_FINANCE",
+        label: "Validé finance",
+        actorName: "Finance Umbrella",
+      },
+    ],
   },
 ];
 

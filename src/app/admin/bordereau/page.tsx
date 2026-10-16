@@ -19,8 +19,10 @@ import { ParcelBarcode } from "@/components/ParcelBarcode";
 import { openBordereauPdf } from "@/lib/parcel-report";
 import { PORTAL_BY_ROLE } from "@/lib/roles";
 import { useApiQuery } from "@/lib/use-api";
+import { useT } from "@/i18n/locale-context";
 
 function BordereauInner() {
+  const t = useT();
   const { session } = useAuth();
   const toast = useToast();
   const id = useSearchParams().get("id");
@@ -46,7 +48,7 @@ function BordereauInner() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Bordereau"
+        title={t("misc.bordereau.title")}
         description={parcel.code ?? `#${parcel.id}`}
         actions={
           <Button

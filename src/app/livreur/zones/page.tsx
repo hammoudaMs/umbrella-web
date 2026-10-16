@@ -1,14 +1,16 @@
 "use client";
 
 import { ZonesManager } from "@/components/ZonesManager";
+import { useT } from "@/i18n/locale-context";
 
 export default function LivreurZonesPage() {
+  const t = useT();
   return (
     <ZonesManager
       canCreate
       canDelete={false}
-      title="Mes zones de tournée"
-      description="Définissez vos secteurs de livraison (centre + rayon) pour organiser vos déplacements."
+      title={t("zones.titleTour")}
+      description={t("zones.descTour")}
     />
   );
 }

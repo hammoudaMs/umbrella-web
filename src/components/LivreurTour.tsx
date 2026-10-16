@@ -2,13 +2,16 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Phone, RefreshCw, Route } from "lucide-react";
+import { Coins, MapPin, Phone, RefreshCw, Route } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useStatusLabel } from "@/i18n/hooks";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import {
   ACTION_TONE_CLASS,
+  buildActionComment,
   livreurActionsFor,
+  type CancelParty,
   type LivreurAction,
 } from "@/lib/livreur-actions";
 import {
@@ -35,10 +38,52 @@ type TourParcel = {
   mode: "EXTERNAL" | "INTERNAL";
   price: string | number;
   notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+const CLOSED_STATUSES = [
+  "LIVRES",
+  "LIVRES_PAYES",
+  "RETOUR_EXPEDITEURS",
+  "REMBOURSES",
+  "SUPPRIME",
+];
+
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function isSameLocalDay(iso: string | undefined, day: Date) {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  return t >= startOfDay(day).getTime() && t <= endOfDay(day).getTime();
+}
+
+function priceNum(price: string | number) {
+  const n = typeof price === "number" ? price : Number(price);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatTnd(n: number) {
+  return new Intl.NumberFormat("fr-TN", {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(n);
+}
 
 export function LivreurTour() {
   const { session } = useAuth();
+  const statusLabelFn = useStatusLabel();
   const [parcels, setParcels] = useState<TourParcel[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,6 +95,7 @@ export function LivreurTour() {
     action: LivreurAction;
   } | null>(null);
   const [comment, setComment] = useState("");
+  const [cancelParty, setCancelParty] = useState<CancelParty | null>(null);
 
   async function load() {
     if (!session?.accessToken) return;
@@ -65,22 +111,47 @@ export function LivreurTour() {
       .finally(() => setLoading(false));
   }, [session]);
 
+  const today = useMemo(() => new Date(), []);
+
   const active = useMemo(
+    () => parcels.filter((p) => !CLOSED_STATUSES.includes(p.status)),
+    [parcels],
+  );
+
+  const deliveredToday = useMemo(
     () =>
       parcels.filter(
         (p) =>
-          ![
-            "LIVRES",
-            "LIVRES_PAYES",
-            "RETOUR_EXPEDITEURS",
-            "REMBOURSES",
-          ].includes(p.status),
+          (p.status === "LIVRES" || p.status === "LIVRES_PAYES") &&
+          isSameLocalDay(p.updatedAt ?? p.createdAt, today),
       ),
-    [parcels],
+    [parcels, today],
   );
-  const done = useMemo(
-    () => parcels.filter((p) => ["LIVRES", "LIVRES_PAYES"].includes(p.status)),
-    [parcels],
+
+  const todayParcels = useMemo(() => {
+    const map = new Map<number, TourParcel>();
+    for (const p of active) map.set(p.id, p);
+    for (const p of deliveredToday) map.set(p.id, p);
+    return Array.from(map.values());
+  }, [active, deliveredToday]);
+
+  const montantAEncaisser = useMemo(
+    () => active.reduce((sum, p) => sum + priceNum(p.price), 0),
+    [active],
+  );
+  const montantLivreAujourdhui = useMemo(
+    () => deliveredToday.reduce((sum, p) => sum + priceNum(p.price), 0),
+    [deliveredToday],
+  );
+
+  const todayLabel = useMemo(
+    () =>
+      today.toLocaleDateString("fr-TN", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }),
+    [today],
   );
 
   const places = useMemo(
@@ -138,6 +209,7 @@ export function LivreurTour() {
       setMessage("Statut mis à jour");
       setPending(null);
       setComment("");
+      setCancelParty(null);
       await load();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Erreur");
@@ -147,9 +219,10 @@ export function LivreurTour() {
   }
 
   function onAction(parcel: TourParcel, action: LivreurAction) {
-    if (action.needsComment) {
+    if (action.needsComment || action.cancelPartyChoices?.length) {
       setPending({ parcel, action });
       setComment("");
+      setCancelParty(null);
       return;
     }
     void applyStatus(parcel.id, action.status);
@@ -158,19 +231,27 @@ export function LivreurTour() {
   function onConfirmComment(e: FormEvent) {
     e.preventDefault();
     if (!pending) return;
-    if (!comment.trim()) {
+    const choices = pending.action.cancelPartyChoices;
+    if (choices?.length && !cancelParty) {
+      setMessage("Choisissez Client ou Expéditeur");
+      return;
+    }
+    if (!choices?.length && pending.action.needsComment && !comment.trim()) {
       setMessage("Un commentaire est requis pour cette action");
       return;
     }
-    void applyStatus(pending.parcel.id, pending.action.status, comment.trim());
+    const note = buildActionComment(pending.action, comment, cancelParty);
+    if (!note.trim()) {
+      setMessage("Indiquez qui a annulé (client ou expéditeur)");
+      return;
+    }
+    void applyStatus(pending.parcel.id, pending.action.status, note);
   }
 
   function renderParcelCard(
     p: TourParcel,
     stopIndex?: number,
   ) {
-    const statusLabel =
-      STATUS_META[p.status as StatusKey]?.label ?? p.status;
     const actions = livreurActionsFor(p.status);
     const busy = busyId === p.id;
 
@@ -183,7 +264,7 @@ export function LivreurTour() {
                 Stop {stopIndex}
               </p>
             ) : null}
-            <p className="font-mono text-xs font-semibold text-brand">
+            <p className="font-mono text-xs font-semibold text-brand keep-ltr">
               {p.code}
             </p>
             <h2 className="mt-0.5 font-display text-lg font-bold text-ink">
@@ -203,7 +284,7 @@ export function LivreurTour() {
               color: STATUS_META[p.status as StatusKey]?.ink ?? "#1A1414",
             }}
           >
-            {statusLabel}
+            {statusLabelFn(p.status)}
           </span>
         </div>
 
@@ -252,8 +333,8 @@ export function LivreurTour() {
   return (
     <div className="mx-auto max-w-lg space-y-5 pb-10">
       <PageHeader
-        title="Ma tournée"
-        description="Demandez une tournée intelligente groupée par lieux"
+        title="Aujourd’hui"
+        description={`Tournée du ${todayLabel} — colis et montant COD`}
         actions={
           <button
             type="button"
@@ -271,6 +352,59 @@ export function LivreurTour() {
         }
       />
 
+      <Panel className="space-y-4 border-brand/20 bg-gradient-to-br from-brand/[0.06] to-surface">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand/15 text-brand">
+            <Coins className="h-5 w-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-lg font-bold text-ink">
+              Colis du jour
+            </p>
+            <p className="text-sm text-ink-muted">
+              {todayParcels.length} colis · montant à encaisser{" "}
+              <span className="font-semibold text-ink">
+                {formatTnd(montantAEncaisser)} TND
+              </span>
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-cream bg-surface px-2 py-3 text-center">
+            <p className="font-display text-xl font-bold text-ink">
+              {active.length}
+            </p>
+            <p className="text-[11px] uppercase tracking-wide text-ink-muted">
+              À livrer
+            </p>
+          </div>
+          <div className="rounded-xl border border-cream bg-surface px-2 py-3 text-center">
+            <p className="font-display text-xl font-bold text-brand">
+              {formatTnd(montantAEncaisser)}
+            </p>
+            <p className="text-[11px] uppercase tracking-wide text-ink-muted">
+              Montant COD
+            </p>
+          </div>
+          <div className="rounded-xl border border-cream bg-surface px-2 py-3 text-center">
+            <p className="font-display text-xl font-bold text-ink">
+              {deliveredToday.length}
+            </p>
+            <p className="text-[11px] uppercase tracking-wide text-ink-muted">
+              Livrés
+            </p>
+          </div>
+        </div>
+        {deliveredToday.length > 0 ? (
+          <p className="text-xs text-ink-muted">
+            Encaissé aujourd’hui :{" "}
+            <span className="font-semibold text-ink">
+              {formatTnd(montantLivreAujourdhui)} TND
+            </span>
+          </p>
+        ) : null}
+      </Panel>
+
       <Panel className="space-y-3">
         <div className="flex items-start gap-3">
           <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand/10 text-xl">
@@ -281,8 +415,7 @@ export function LivreurTour() {
               Tournée intelligente
             </p>
             <p className="text-sm text-ink-muted">
-              Regroupe vos colis par ville / gouvernorat et propose un ordre de
-              passage.
+              Regroupe vos colis du jour par ville / gouvernorat.
             </p>
           </div>
         </div>
@@ -319,21 +452,6 @@ export function LivreurTour() {
         ) : null}
       </Panel>
 
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          ["Actifs", active.length],
-          ["Lieux", tourActive ? places.length : "—"],
-          ["Livrés", done.length],
-        ].map(([label, n]) => (
-          <Panel key={String(label)} className="py-3 text-center">
-            <p className="font-display text-xl font-bold text-ink">{n}</p>
-            <p className="text-[11px] uppercase tracking-wide text-ink-muted">
-              {label}
-            </p>
-          </Panel>
-        ))}
-      </div>
-
       {message ? (
         <p className="rounded-xl border border-cream bg-surface px-4 py-2 text-sm font-medium text-ink">
           {message}
@@ -342,10 +460,10 @@ export function LivreurTour() {
 
       {loading ? <LoadingBlock rows={3} label="Chargement tournée…" /> : null}
 
-      {!loading && active.length === 0 ? (
+      {!loading && todayParcels.length === 0 ? (
         <EmptyState
-          title="Aucune tournée active"
-          description="Les colis livrés ou clôturés apparaissent dans la liste complète."
+          title="Aucun colis aujourd’hui"
+          description="Dès qu’un colis vous est assigné, il apparaît ici avec le montant COD."
           action={
             <Link
               href="/livreur/parcels"
@@ -359,6 +477,9 @@ export function LivreurTour() {
 
       {!loading && tourActive && places.length > 0 ? (
         <div className="space-y-6">
+          <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted">
+            À livrer aujourd’hui
+          </h2>
           {places.map((place, placeIndex) => {
             const baseIndex = places
               .slice(0, placeIndex)
@@ -391,11 +512,29 @@ export function LivreurTour() {
       ) : null}
 
       {!loading && !tourActive && active.length > 0 ? (
-        <ul className="space-y-4">
-          {active.map((p) => (
-            <li key={p.id}>{renderParcelCard(p)}</li>
-          ))}
-        </ul>
+        <section className="space-y-3">
+          <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted">
+            À livrer aujourd’hui · {formatTnd(montantAEncaisser)} TND
+          </h2>
+          <ul className="space-y-4">
+            {active.map((p) => (
+              <li key={p.id}>{renderParcelCard(p)}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {!loading && deliveredToday.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted">
+            Livrés aujourd’hui · {formatTnd(montantLivreAujourdhui)} TND
+          </h2>
+          <ul className="space-y-3">
+            {deliveredToday.map((p) => (
+              <li key={`done-${p.id}`}>{renderParcelCard(p)}</li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {pending ? (
@@ -413,15 +552,45 @@ export function LivreurTour() {
             <p className="mt-1 text-sm text-ink-muted">
               {pending.parcel.code} · {pending.parcel.recipientName}
             </p>
+            {pending.action.cancelPartyChoices?.length ? (
+              <fieldset className="mt-4">
+                <legend className="text-sm font-medium text-ink">
+                  Annulée par <span className="text-brand">*</span>
+                </legend>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {pending.action.cancelPartyChoices.map((opt) => {
+                    const active = cancelParty === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCancelParty(opt.id)}
+                        className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                          active
+                            ? "border-brand bg-brand/10 text-brand"
+                            : "border-cream bg-surface text-ink hover:border-brand/40"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
             <label className="mt-4 block text-sm font-medium text-ink">
               {pending.action.commentLabel ?? "Commentaire"}
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={3}
-                required
+                required={!pending.action.cancelPartyChoices?.length}
                 className="mt-1.5 w-full rounded-xl border border-cream px-3 py-2.5 text-sm outline-none ring-brand focus:ring-2"
-                placeholder="Ex. report demain 10h, numéro erroné…"
+                placeholder={
+                  pending.action.cancelPartyChoices?.length
+                    ? "Ex. client refuse, expéditeur a annulé la commande…"
+                    : "Ex. report demain 10h, numéro erroné…"
+                }
               />
             </label>
             <div className="mt-4 flex gap-2">
@@ -430,6 +599,7 @@ export function LivreurTour() {
                 onClick={() => {
                   setPending(null);
                   setComment("");
+                  setCancelParty(null);
                 }}
                 className="flex-1 rounded-xl border border-cream py-2.5 text-sm font-semibold text-ink"
               >
@@ -437,7 +607,12 @@ export function LivreurTour() {
               </button>
               <button
                 type="submit"
-                disabled={busyId === pending.parcel.id}
+                disabled={
+                  busyId === pending.parcel.id ||
+                  Boolean(
+                    pending.action.cancelPartyChoices?.length && !cancelParty,
+                  )
+                }
                 className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Confirmer

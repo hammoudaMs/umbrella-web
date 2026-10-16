@@ -7,6 +7,7 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  Banknote,
   Box,
   CalendarDays,
   ChevronDown,
@@ -14,14 +15,18 @@ import {
   CircleCheck,
   Clock,
   Coins,
+  HandCoins,
+  LifeBuoy,
   Package,
   RefreshCw,
   ShieldCheck,
   Truck,
+  Wallet,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { HeroVanScene } from "@/components/landing/HeroVanScene";
+import { useT } from "@/i18n/locale-context";
 import { cn } from "@/lib/cn";
 import { type OpsKpi, type OpsKpiTone } from "@/lib/ops-status-kpis";
 import type { PortalHomeConfig } from "@/lib/portal-home";
@@ -37,13 +42,6 @@ type PerfParcel = {
   status: string;
   createdAt: string;
   price: string | number;
-};
-
-const PERIOD_LABELS: Record<PerfPeriod, string> = {
-  today: "Aujourd'hui",
-  week: "Semaine",
-  month: "Mois",
-  custom: "Personnalisé",
 };
 
 function startOfDay(d: Date) {
@@ -135,6 +133,22 @@ function formatMoney(n: number) {
   }).format(n);
 }
 
+function formatGreetingDate(d: Date) {
+  return d.toLocaleDateString("fr-TN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatGreetingTime(d: Date) {
+  return d.toLocaleTimeString("fr-TN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatPrice(value: string | number) {
   const n = typeof value === "number" ? value : Number(value);
   if (Number.isNaN(n)) return String(value);
@@ -155,22 +169,6 @@ function formatShortDate(value: string) {
 function formatTime(value: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("fr-TN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatGreetingDate(d: Date) {
-  return d.toLocaleDateString("fr-TN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function formatGreetingTime(d: Date) {
   return d.toLocaleTimeString("fr-TN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -450,6 +448,21 @@ function OpsKpiCard({
   );
 }
 
+export type ExpediteurAsideData = {
+  eligibleCount: number;
+  eligibleAmount: number;
+  returnCount: number;
+  openTicketCount: number;
+  openTickets: Array<{
+    id: number;
+    title: string;
+    status: string;
+    parcel?: { code: string | null } | null;
+  }>;
+  disponible: number;
+  enDemande: number;
+};
+
 type OpsDashboardProps = {
   basePath: string;
   firstName: string;
@@ -467,6 +480,7 @@ type OpsDashboardProps = {
   recent: RecentParcel[];
   returns: RecentParcel[];
   deliveredRecent: RecentParcel[];
+  expediteurAside?: ExpediteurAsideData | null;
   onCreateParcel?: () => void;
 };
 
@@ -486,13 +500,24 @@ export function OpsDashboardBoard({
   recent,
   returns,
   deliveredRecent,
+  expediteurAside = null,
   onCreateParcel,
 }: OpsDashboardProps) {
+  const t = useT();
+  const periodLabels: Record<PerfPeriod, string> = {
+    today: t("common.today"),
+    week: t("common.week"),
+    month: t("common.month"),
+    custom: t("common.custom"),
+  };
   const now = new Date();
   const maxDay = Math.max(1, ...last7Days.map((d) => d.total));
   const analyticsHref = `${basePath}/analytics`;
   const parcelsHref = `${basePath}/parcels`;
+  const paymentsHref = `${basePath}/payments`;
+  const ticketsHref = `${basePath}/tickets`;
   const retoursHref = home.retoursHref;
+  const isExpediteurAside = home.asideMode === "expediteur";
   const {
     subtitle,
     showNouveauCta,
@@ -588,42 +613,53 @@ export function OpsDashboardBoard({
 
   return (
     <div className="ops-board -mx-3 -mt-2 space-y-3 bg-ops-page px-3 pb-3 pt-1 text-ops-ink md:-mx-4 md:px-4 lg:-mx-5 lg:space-y-3 lg:px-5 lg:pb-2 lg:pt-0">
-      <section className="relative min-h-[210px] overflow-hidden rounded-2xl border border-ops-card bg-ops-surface sm:min-h-[230px]">
+      <section className="relative min-h-[220px] overflow-hidden rounded-2xl border border-ops-card bg-ops-surface sm:min-h-[240px]">
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute inset-0 bg-gradient-to-br from-ops-page via-ops-surface to-[#241014]" />
           <HeroVanScene variant="portal" />
-          <div className="absolute inset-0 bg-gradient-to-r from-ops-page from-[0%] via-ops-page/80 via-[28%] to-transparent to-[52%]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-ops-page from-[0%] via-ops-page/88 via-[32%] to-transparent to-[58%]" />
+          <div className="absolute inset-y-0 left-0 w-[min(100%,22rem)] bg-gradient-to-r from-ops-page/90 via-ops-page/55 to-transparent sm:w-[26rem]" />
           <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-ops-page/55 to-transparent" />
         </div>
-        <div className="relative z-10 flex min-h-[210px] flex-col gap-4 px-4 py-5 sm:min-h-[230px] sm:flex-row sm:items-end sm:justify-between lg:px-6 lg:py-6">
-          <div className="relative z-10 min-w-0 max-w-[min(100%,21rem)] sm:max-w-md">
-            <h1 className="font-display text-[1.5rem] font-extrabold tracking-tight text-ops-ink drop-shadow-[0_1px_8px_rgba(0,0,0,0.55)] lg:text-[1.75rem]">
+        <div className="relative z-10 flex min-h-[220px] flex-col justify-between gap-5 px-4 py-5 sm:min-h-[240px] sm:flex-row sm:items-end sm:px-5 lg:px-6 lg:py-6">
+          <div className="relative z-10 flex min-w-0 max-w-[17.5rem] flex-col sm:max-w-[20rem]">
+            <h1 className="font-display text-[1.65rem] font-extrabold leading-[1.15] tracking-tight text-ops-ink drop-shadow-[0_2px_12px_rgba(0,0,0,0.65)] sm:text-[1.85rem]">
               Bonjour{firstName ? ` ${firstName}` : ""}
             </h1>
-            <p className="mt-1 text-[15px] text-ops-ink/85 lg:text-sm">{subtitle}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {solde != null ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-700/25 bg-emerald-50 px-3 py-1.5 text-[13px] font-semibold text-emerald-800 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300">
-                  <Coins className="h-4 w-4 shrink-0" aria-hidden />
+            <p className="mt-2 max-w-[16rem] text-[13px] leading-snug text-ops-ink/75 sm:text-[14px] sm:leading-relaxed">
+              {subtitle}
+            </p>
+
+            {solde != null ? (
+              <div className="mt-4 inline-flex w-fit items-center gap-2.5 rounded-full border border-emerald-500/35 bg-black/45 px-3.5 py-2 shadow-[0_4px_16px_rgba(0,0,0,0.35)] backdrop-blur-md dark:bg-black/50">
+                <Coins
+                  className="h-4 w-4 shrink-0 text-emerald-400"
+                  aria-hidden
+                />
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-emerald-300/90">
                   Solde
-                  <span className="font-display text-[15px] font-extrabold tabular-nums text-emerald-950 dark:text-white">
-                    {formatMoney(solde)}
-                  </span>
                 </span>
-              ) : null}
-              <p className="text-[13px] capitalize text-ops-ink/65">
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="h-4 w-4" aria-hidden />
-                  {formatGreetingDate(now)}
+                <span className="font-display text-[15px] font-extrabold tabular-nums text-white">
+                  {formatMoney(solde)}
                 </span>
-                <span className="mx-2 text-ops-ink/25">·</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="h-4 w-4" aria-hidden />
-                  {formatGreetingTime(now)}
-                </span>
-              </p>
-            </div>
+              </div>
+            ) : null}
+
+            <p className="mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] capitalize text-ops-ink/55">
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                {formatGreetingDate(now)}
+              </span>
+              <span className="text-ops-ink/25" aria-hidden>
+                ·
+              </span>
+              <span className="inline-flex items-center gap-1.5 normal-case">
+                <Clock className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                {formatGreetingTime(now)}
+              </span>
+            </p>
           </div>
+
           {createInPlace ? (
             <button
               type="button"
@@ -704,9 +740,9 @@ export function OpsDashboardBoard({
             <section className={`flex h-full flex-col rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops ${showPerformance ? "lg:col-span-8" : "lg:col-span-12"}`}>
               <div className="flex shrink-0 items-center justify-between gap-2">
                 <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
-                  Évolution des livraisons
+                  {t("mobile.deliveryTrend")}
                   <span className="mt-0.5 block text-[13px] font-medium text-ops-ink/45 lg:ml-1 lg:mt-0 lg:inline">
-                    (7 jours)
+                    {t("mobile.deliveryTrendDays")}
                   </span>
                 </h2>
                 {showAnalyticsLink ? (
@@ -714,7 +750,7 @@ export function OpsDashboardBoard({
                   href={analyticsHref}
                   className="shrink-0 text-[14px] font-semibold text-ops-accent lg:text-[12px]"
                 >
-                  Détail →
+                  {t("mobile.detailLink")}
                 </Link>
                 ) : null}
               </div>
@@ -787,7 +823,7 @@ export function OpsDashboardBoard({
             <section className={`flex h-full flex-col rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops ${showChart ? "lg:col-span-4" : "lg:col-span-12"}`}>
               <div className="relative flex shrink-0 items-center justify-between gap-2">
                 <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
-                  Performance
+                  {t("mobile.performance")}
                 </h2>
                 <div className="relative" ref={periodMenuRef}>
                   <button
@@ -798,7 +834,7 @@ export function OpsDashboardBoard({
                     aria-haspopup="listbox"
                   >
                     <CalendarDays className="h-3.5 w-3.5" aria-hidden />
-                    {PERIOD_LABELS[perfPeriod]}
+                    {periodLabels[perfPeriod]}
                     <ChevronDown className="h-3.5 w-3.5 opacity-60" aria-hidden />
                   </button>
                   {periodOpen ? (
@@ -831,7 +867,7 @@ export function OpsDashboardBoard({
                               : "text-ops-ink/80 hover:bg-ops-ink/[0.06]",
                           )}
                         >
-                          {PERIOD_LABELS[key]}
+                          {periodLabels[key]}
                         </button>
                       ))}
                       {perfPeriod === "custom" ? (
@@ -1205,46 +1241,32 @@ export function OpsDashboardBoard({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
-                Activité récente
-              </h2>
-              <Link
-                href={parcelsHref}
-                className="text-[14px] font-semibold text-ops-accent lg:text-[12px]"
-              >
-                Voir tout →
-              </Link>
-            </div>
-            <ul className="mt-2 space-y-0.5">
-              {recent.length === 0 ? (
-                <li className="py-4 text-center text-[14px] text-ops-ink/40">
-                  Aucune activité
-                </li>
-              ) : (
-                recent.slice(0, 4).map((p) => {
-                  const meta = STATUS_META[p.status as StatusKey];
-                  const { box, label, Icon } = statusVisual(p.status);
-                  return (
-                    <li key={p.id}>
+          {isExpediteurAside && expediteurAside ? (
+            <>
+              <section className="rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
+                <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
+                  {t("mobile.toDo")}
+                </h2>
+                <ul className="mt-2.5 space-y-1.5">
+                  {expediteurAside.eligibleCount > 0 ? (
+                    <li>
                       <Link
-                        href={`${basePath}/parcels/${p.id}`}
-                        className="flex min-h-11 items-center gap-2.5 rounded-xl px-1 py-1.5 transition hover:bg-ops-ink/[0.05]"
+                        href={paymentsHref}
+                        className="flex min-h-12 items-center gap-3 rounded-xl border border-ops-card px-2.5 py-2 transition hover:bg-ops-ink/[0.05]"
                       >
-                        <span
-                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${box}`}
-                        >
-                          <Icon className="h-4 w-4" strokeWidth={2.25} />
+                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                          <HandCoins className="h-4 w-4" strokeWidth={2.25} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-ops-ink">
-                            Colis #{p.code ?? p.id}
+                          <span className="block text-[13px] font-semibold text-ops-ink">
+                            {t("mobile.todoPay", {
+                              count: expediteurAside.eligibleCount,
+                            })}
                           </span>
-                          <span
-                            className={`block truncate text-[11px] font-medium ${label}`}
-                          >
-                            {meta?.label ?? p.status}
+                          <span className="mt-0.5 block text-[11px] text-ops-ink/45">
+                            {t("mobile.todoPayHint", {
+                              amount: formatPrice(expediteurAside.eligibleAmount),
+                            })}
                           </span>
                         </span>
                         <ChevronRight
@@ -1253,65 +1275,269 @@ export function OpsDashboardBoard({
                         />
                       </Link>
                     </li>
-                  );
-                })
-              )}
-            </ul>
-          </section>
-
-          {showDeliveredRecent ? (
-          <section className="flex flex-1 flex-col rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
-                Derniers colis livrés
-              </h2>
-              <Link
-                href={`${parcelsHref}?status=LIVRES`}
-                className="text-[14px] font-semibold text-ops-accent lg:text-[12px]"
-              >
-                Voir tout →
-              </Link>
-            </div>
-            <ul className="mt-2 flex flex-1 flex-col justify-start gap-0.5">
-              {deliveredRecent.length === 0 ? (
-                <li className="py-4 text-center text-[14px] text-ops-ink/40">
-                  Aucune livraison récente
-                </li>
-              ) : (
-                deliveredRecent.slice(0, 5).map((p, index) => {
-                  const tile = DELIVERED_TILES[index % DELIVERED_TILES.length];
-                  const TileIcon = tile.Icon;
-                  return (
-                    <li key={p.id}>
+                  ) : null}
+                  {expediteurAside.returnCount > 0 ? (
+                    <li>
                       <Link
-                        href={`${basePath}/parcels/${p.id}`}
-                        className="flex min-h-11 items-center gap-2.5 rounded-xl px-1 py-1.5 transition hover:bg-ops-ink/[0.05]"
+                        href={retoursHref}
+                        className="flex min-h-12 items-center gap-3 rounded-xl border border-ops-card px-2.5 py-2 transition hover:bg-ops-ink/[0.05]"
                       >
-                        <span
-                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${tile.box}`}
-                        >
-                          <TileIcon className="h-4 w-4" strokeWidth={2.25} />
+                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                          <RefreshCw className="h-4 w-4" strokeWidth={2.25} />
                         </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono text-[13px] font-bold text-ops-ink">
-                            {p.code ?? `#${p.id}`}
-                          </p>
-                          <p className="truncate text-[11px] text-ops-ink/45">
-                            {p.city} · {formatPrice(p.price)}
-                          </p>
-                        </div>
-                        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-ops-ink/40">
-                          {formatTime(p.createdAt)}
-                          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-semibold text-ops-ink">
+                            {t("mobile.todoReturns", {
+                              count: expediteurAside.returnCount,
+                            })}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-ops-ink/45">
+                            {t("mobile.todoReturnsHint")}
+                          </span>
                         </span>
+                        <ChevronRight
+                          className="h-4 w-4 shrink-0 text-ops-ink/30"
+                          aria-hidden
+                        />
                       </Link>
                     </li>
-                  );
-                })
-              )}
-            </ul>
-          </section>
-          ) : null}
+                  ) : null}
+                  {expediteurAside.openTicketCount > 0 ? (
+                    <li>
+                      <Link
+                        href={ticketsHref}
+                        className="flex min-h-12 items-center gap-3 rounded-xl border border-ops-card px-2.5 py-2 transition hover:bg-ops-ink/[0.05]"
+                      >
+                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white">
+                          <LifeBuoy className="h-4 w-4" strokeWidth={2.25} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-semibold text-ops-ink">
+                            {t("mobile.todoTickets", {
+                              count: expediteurAside.openTicketCount,
+                            })}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-ops-ink/45">
+                            {t("mobile.todoTicketsHint")}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          className="h-4 w-4 shrink-0 text-ops-ink/30"
+                          aria-hidden
+                        />
+                      </Link>
+                    </li>
+                  ) : null}
+                  {expediteurAside.eligibleCount === 0 &&
+                  expediteurAside.returnCount === 0 &&
+                  expediteurAside.openTicketCount === 0 ? (
+                    <li className="py-4 text-center text-[14px] text-ops-ink/40">
+                      {t("mobile.toDoEmpty")}
+                    </li>
+                  ) : null}
+                </ul>
+              </section>
+
+              <section className="rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
+                    {t("mobile.money")}
+                  </h2>
+                  <Link
+                    href={paymentsHref}
+                    className="text-[14px] font-semibold text-ops-accent lg:text-[12px]"
+                  >
+                    {t("mobile.moneySeePayments")} →
+                  </Link>
+                </div>
+                <ul className="mt-3 space-y-2">
+                  <li className="flex items-center justify-between gap-3 rounded-xl bg-ops-ink/[0.04] px-3 py-2.5">
+                    <span className="inline-flex items-center gap-2 text-[12px] text-ops-ink/55">
+                      <Wallet className="h-4 w-4 text-ops-accent" aria-hidden />
+                      {t("mobile.moneyAvailable")}
+                    </span>
+                    <span className="font-display text-[15px] font-bold tabular-nums text-ops-ink">
+                      {formatPrice(expediteurAside.disponible)}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between gap-3 rounded-xl bg-ops-ink/[0.04] px-3 py-2.5">
+                    <span className="inline-flex items-center gap-2 text-[12px] text-ops-ink/55">
+                      <Banknote className="h-4 w-4 text-amber-500" aria-hidden />
+                      {t("mobile.moneyPending")}
+                    </span>
+                    <span className="font-display text-[15px] font-bold tabular-nums text-ops-ink">
+                      {formatPrice(expediteurAside.enDemande)}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between gap-3 rounded-xl bg-emerald-500/10 px-3 py-2.5">
+                    <span className="inline-flex items-center gap-2 text-[12px] text-ops-ink/55">
+                      <HandCoins className="h-4 w-4 text-emerald-600" aria-hidden />
+                      {t("mobile.moneyReady")}
+                    </span>
+                    <span className="font-display text-[15px] font-bold tabular-nums text-emerald-700">
+                      {formatPrice(expediteurAside.eligibleAmount)}
+                    </span>
+                  </li>
+                </ul>
+              </section>
+
+              <section className="flex flex-1 flex-col rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
+                    {t("mobile.openTickets")}
+                  </h2>
+                  <Link
+                    href={ticketsHref}
+                    className="text-[14px] font-semibold text-ops-accent lg:text-[12px]"
+                  >
+                    {t("common.seeAll")} →
+                  </Link>
+                </div>
+                <ul className="mt-2 flex flex-1 flex-col justify-start gap-0.5">
+                  {expediteurAside.openTickets.length === 0 ? (
+                    <li className="py-4 text-center text-[14px] text-ops-ink/40">
+                      {t("mobile.ticketsEmpty")}
+                    </li>
+                  ) : (
+                    expediteurAside.openTickets.map((ticket) => (
+                      <li key={ticket.id}>
+                        <Link
+                          href={ticketsHref}
+                          className="flex min-h-11 items-center gap-2.5 rounded-xl px-1 py-1.5 transition hover:bg-ops-ink/[0.05]"
+                        >
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600/15 text-sky-600">
+                            <LifeBuoy className="h-4 w-4" strokeWidth={2.25} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-semibold text-ops-ink">
+                              #{ticket.id} · {ticket.title}
+                            </span>
+                            <span className="block truncate text-[11px] text-ops-ink/45">
+                              {ticket.parcel?.code ?? t("mobile.todoTicketsHint")}
+                            </span>
+                          </span>
+                          <ChevronRight
+                            className="h-4 w-4 shrink-0 text-ops-ink/30"
+                            aria-hidden
+                          />
+                        </Link>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </section>
+            </>
+          ) : (
+            <>
+              <section className="rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
+                    {t("mobile.recentActivity")}
+                  </h2>
+                  <Link
+                    href={parcelsHref}
+                    className="text-[14px] font-semibold text-ops-accent lg:text-[12px]"
+                  >
+                    {t("common.seeAll")} →
+                  </Link>
+                </div>
+                <ul className="mt-2 space-y-0.5">
+                  {recent.length === 0 ? (
+                    <li className="py-4 text-center text-[14px] text-ops-ink/40">
+                      {t("mobile.noActivity")}
+                    </li>
+                  ) : (
+                    recent.slice(0, 4).map((p) => {
+                      const meta = STATUS_META[p.status as StatusKey];
+                      const { box, label, Icon } = statusVisual(p.status);
+                      return (
+                        <li key={p.id}>
+                          <Link
+                            href={`${basePath}/parcels/${p.id}`}
+                            className="flex min-h-11 items-center gap-2.5 rounded-xl px-1 py-1.5 transition hover:bg-ops-ink/[0.05]"
+                          >
+                            <span
+                              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${box}`}
+                            >
+                              <Icon className="h-4 w-4" strokeWidth={2.25} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px] font-semibold text-ops-ink">
+                                {t("mobile.parcelLine", { code: p.code ?? p.id })}
+                              </span>
+                              <span
+                                className={`block truncate text-[11px] font-medium ${label}`}
+                              >
+                                {meta?.label ?? p.status}
+                              </span>
+                            </span>
+                            <ChevronRight
+                              className="h-4 w-4 shrink-0 text-ops-ink/30"
+                              aria-hidden
+                            />
+                          </Link>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </section>
+
+              {showDeliveredRecent ? (
+                <section className="flex flex-1 flex-col rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-[17px] font-semibold text-ops-ink lg:text-[15px]">
+                      {t("mobile.recentDelivered")}
+                    </h2>
+                    <Link
+                      href={`${parcelsHref}?status=LIVRES`}
+                      className="text-[14px] font-semibold text-ops-accent lg:text-[12px]"
+                    >
+                      {t("common.seeAll")} →
+                    </Link>
+                  </div>
+                  <ul className="mt-2 flex flex-1 flex-col justify-start gap-0.5">
+                    {deliveredRecent.length === 0 ? (
+                      <li className="py-4 text-center text-[14px] text-ops-ink/40">
+                        {t("mobile.noRecentDelivered")}
+                      </li>
+                    ) : (
+                      deliveredRecent.slice(0, 5).map((p, index) => {
+                        const tile = DELIVERED_TILES[index % DELIVERED_TILES.length];
+                        const TileIcon = tile.Icon;
+                        return (
+                          <li key={p.id}>
+                            <Link
+                              href={`${basePath}/parcels/${p.id}`}
+                              className="flex min-h-11 items-center gap-2.5 rounded-xl px-1 py-1.5 transition hover:bg-ops-ink/[0.05]"
+                            >
+                              <span
+                                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${tile.box}`}
+                              >
+                                <TileIcon className="h-4 w-4" strokeWidth={2.25} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-mono text-[13px] font-bold text-ops-ink">
+                                  {p.code ?? `#${p.id}`}
+                                </p>
+                                <p className="truncate text-[11px] text-ops-ink/45">
+                                  {p.city} · {formatPrice(p.price)}
+                                </p>
+                              </div>
+                              <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-ops-ink/40">
+                                {formatTime(p.createdAt)}
+                                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                              </span>
+                            </Link>
+                          </li>
+                        );
+                      })
+                    )}
+                  </ul>
+                </section>
+              ) : null}
+            </>
+          )}
         </aside>
       </div>
 

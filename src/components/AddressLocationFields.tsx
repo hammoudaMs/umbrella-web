@@ -50,6 +50,8 @@ type AddressLocationFieldsProps = {
   fieldClass?: string;
   showStreet?: boolean;
   compact?: boolean;
+  /** Hide the qualité adresse score (e.g. expéditeur). */
+  showQuality?: boolean;
 };
 
 const DEFAULT_FIELD =
@@ -74,6 +76,7 @@ export function AddressLocationFields({
   fieldClass = DEFAULT_FIELD,
   showStreet = true,
   compact = false,
+  showQuality = true,
 }: AddressLocationFieldsProps) {
   const searchId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -338,33 +341,37 @@ export function AddressLocationFields({
         </div>
       </div>
 
-      <div
-        className={`rounded-lg border px-3 py-2 text-xs ${
-          quality.level === "strong"
-            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-            : quality.level === "ok"
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200"
-              : "border-ops-accent/40 bg-ops-accent/10 text-ops-ink"
-        }`}
-      >
-        <p className="font-semibold">
-          Qualité adresse · {quality.score}/100
-          {quality.level === "strong"
-            ? " — solide"
-            : quality.level === "ok"
-              ? " — correcte"
-              : " — à préciser"}
-        </p>
-        {quality.warnings.length > 0 ? (
-          <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] opacity-90">
-            {quality.warnings.slice(0, 3).map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-[11px]">Adresse suffisamment précise pour la livraison.</p>
-        )}
-      </div>
+      {showQuality ? (
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs ${
+            quality.level === "strong"
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+              : quality.level === "ok"
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                : "border-ops-accent/40 bg-ops-accent/10 text-ops-ink"
+          }`}
+        >
+          <p className="font-semibold">
+            Qualité adresse · {quality.score}/100
+            {quality.level === "strong"
+              ? " — solide"
+              : quality.level === "ok"
+                ? " — correcte"
+                : " — à préciser"}
+          </p>
+          {quality.warnings.length > 0 ? (
+            <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] opacity-90">
+              {quality.warnings.slice(0, 3).map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-[11px]">
+              Adresse suffisamment précise pour la livraison.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {showMap ? (
         <MapPinPicker

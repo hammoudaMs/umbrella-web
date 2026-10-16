@@ -3,17 +3,20 @@
 import Link from "next/link";
 import { Clock3 } from "lucide-react";
 import { AuthLayout } from "@/components/AuthLayout";
+import { useT } from "@/i18n/locale-context";
 
 export default function CompteEnAttentePage() {
+  const t = useT();
+
   return (
     <AuthLayout
-      title="Compte en attente"
-      subtitle="Votre inscription a bien été reçue. L’équipe Umbrella vérifie votre profil avant d’activer l’accès."
+      title={t("auth.pendingAccountTitle")}
+      subtitle={t("auth.pendingAccountSubtitle")}
       footer={
         <>
-          Déjà validé ?{" "}
+          {t("auth.alreadyValidated")}{" "}
           <Link href="/login" className="font-semibold text-brand hover:underline">
-            Se connecter
+            {t("auth.submit")}
           </Link>
         </>
       }
@@ -23,14 +26,13 @@ export default function CompteEnAttentePage() {
           <Clock3 className="h-7 w-7" aria-hidden />
         </div>
         <p className="text-sm leading-relaxed text-ink-muted">
-          Vous recevrez l’accès à votre espace une fois le compte approuvé. Si
-          votre demande est refusée, contactez le support Umbrella Express.
+          {t("auth.pendingAccountBody")}
         </p>
         <Link
           href="/login"
           className="inline-flex w-full items-center justify-center rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand/90"
         >
-          Retour à la connexion
+          {t("auth.backToLogin")}
         </Link>
       </div>
     </AuthLayout>

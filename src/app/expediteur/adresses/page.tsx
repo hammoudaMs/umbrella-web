@@ -14,6 +14,7 @@ import {
   type SavedAddress,
 } from "@/lib/address-book";
 import { displayGovernorate } from "@/lib/normalize-text";
+import { useT } from "@/i18n/locale-context";
 
 const EMPTY_LOCATION: AddressLocationValue = {
   governorate: "",
@@ -26,6 +27,7 @@ const EMPTY_LOCATION: AddressLocationValue = {
 };
 
 export default function ExpediteurAdressesPage() {
+  const t = useT();
   const [list, setList] = useState<SavedAddress[]>([]);
   const [open, setOpen] = useState(false);
   const [location, setLocation] = useState<AddressLocationValue>(EMPTY_LOCATION);
@@ -37,8 +39,8 @@ export default function ExpediteurAdressesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Carnet d'adresses"
-        description="Réutilisez des adresses fréquentes à la création de colis"
+        title={t("home.addressBook")}
+        description={t("misc.adresses.description")}
         actions={
           <button
             type="button"
@@ -49,7 +51,7 @@ export default function ExpediteurAdressesPage() {
             className="inline-flex items-center gap-2 rounded-xl bg-ops-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-ops-accent-soft"
           >
             <Plus className="h-4 w-4" />
-            Ajouter
+            {t("misc.adresses.add")}
           </button>
         }
       />
@@ -66,7 +68,7 @@ export default function ExpediteurAdressesPage() {
               const fd = new FormData(e.currentTarget);
               const next = upsertAddress({
                 id: `addr-${Date.now()}`,
-                label: String(fd.get("label") || "Adresse"),
+                label: String(fd.get("label") || t("misc.adresses.defaultLabel")),
                 contact: String(fd.get("contact") || ""),
                 phone: String(fd.get("phone") || ""),
                 line: location.locality
@@ -86,9 +88,9 @@ export default function ExpediteurAdressesPage() {
           >
             {(
               [
-                ["label", "Libellé"],
-                ["contact", "Contact"],
-                ["phone", "Téléphone"],
+                ["label", t("common.label")],
+                ["contact", t("misc.adresses.contact")],
+                ["phone", t("common.phone")],
               ] as const
             ).map(([name, label]) => (
               <label key={name} className="block text-sm sm:col-span-1">
@@ -113,7 +115,7 @@ export default function ExpediteurAdressesPage() {
                 type="submit"
                 className="rounded-xl bg-ops-accent px-4 py-2 text-sm font-semibold text-white"
               >
-                Enregistrer
+                {t("common.save")}
               </button>
             </div>
           </form>
@@ -144,7 +146,7 @@ export default function ExpediteurAdressesPage() {
                 type="button"
                 onClick={() => setList(removeAddress(a.id))}
                 className="h-9 w-9 shrink-0 rounded-lg border border-ops-card text-ops-ink/50 hover:text-ops-accent"
-                aria-label="Supprimer"
+                aria-label={t("common.delete")}
               >
                 <Trash2 className="mx-auto h-4 w-4" />
               </button>

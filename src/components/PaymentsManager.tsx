@@ -1,8 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Banknote, CheckCircle2, Clock3, HandCoins, Wallet, XCircle } from "lucide-react";
+import {
+  Banknote,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  HandCoins,
+  Sparkles,
+  Wallet,
+  XCircle,
+} from "lucide-react";
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
+import { Modal } from "@/components/Modal";
 import {
   Badge,
   Button,
@@ -21,22 +31,18 @@ import {
   trClass,
   type BadgeTone,
 } from "@/components/ui";
+import { useT } from "@/i18n/locale-context";
+import { useAuth } from "@/lib/auth-context";
 import {
   formatTnd,
   toAmount,
   type Parcel,
   type Payment,
+  type PaymentHistoryEntry,
   type PaymentStatus,
 } from "@/lib/domain";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
-
-const STATUS_LABEL: Record<PaymentStatus, string> = {
-  EN_DEMANDE: "En demande",
-  APPROUVE: "Approuvé",
-  PAYE: "Payé",
-  REJETE: "Rejeté",
-};
 
 type PaymentSortKey = "id" | "sender" | "items" | "amount" | "status";
 
@@ -45,20 +51,55 @@ const PAYMENT_SORT = {
   sender: (p: Payment) => p.sender?.name ?? "",
   items: (p: Payment) => p.items.length,
   amount: (p: Payment) => toAmount(p.amount),
-  status: (p: Payment) => STATUS_LABEL[p.status],
+  status: (p: Payment) => p.status,
 } as const;
 
 const STATUS_TONE: Record<PaymentStatus, BadgeTone> = {
   EN_DEMANDE: "warning",
+  VALIDE_FINANCE: "info",
+  VALIDE_CHEF: "gold",
+  VALIDE_EXPERT: "brand",
   APPROUVE: "info",
   PAYE: "success",
   REJETE: "danger",
 };
 
-const ACTIVE: PaymentStatus[] = ["EN_DEMANDE", "APPROUVE", "PAYE"];
+const ACTIVE: PaymentStatus[] = [
+  "EN_DEMANDE",
+  "VALIDE_FINANCE",
+  "VALIDE_CHEF",
+  "VALIDE_EXPERT",
+  "APPROUVE",
+  "PAYE",
+];
 const DELIVERED = ["LIVRES", "LIVRES_PAYES"];
+const PIPELINE: PaymentStatus[] = [
+  "EN_DEMANDE",
+  "VALIDE_FINANCE",
+  "VALIDE_CHEF",
+  "VALIDE_EXPERT",
+  "PAYE",
+  "REJETE",
+];
 
 type Filter = "ALL" | PaymentStatus;
+
+function normalizeStatus(status: PaymentStatus): PaymentStatus {
+  return status === "APPROUVE" ? "VALIDE_FINANCE" : status;
+}
+
+function paymentStatusKey(status: PaymentStatus): string {
+  const normalized = normalizeStatus(status);
+  const map: Partial<Record<PaymentStatus, string>> = {
+    EN_DEMANDE: "payments.statusEnDemande",
+    VALIDE_FINANCE: "payments.statusValideFinance",
+    VALIDE_CHEF: "payments.statusValideChef",
+    VALIDE_EXPERT: "payments.statusValideExpert",
+    PAYE: "payments.statusPaye",
+    REJETE: "payments.statusRejete",
+  };
+  return map[normalized] ?? "payments.statusEnDemande";
+}
 
 export function PaymentsManager({
   canCreate = true,
@@ -67,22 +108,28 @@ export function PaymentsManager({
   canCreate?: boolean;
   canModerate?: boolean;
 }) {
+  const { session } = useAuth();
+  const role = session?.user.role;
   const request = useApi();
   const toast = useToast();
   const confirm = useConfirm();
+  const t = useT();
+  const statusLabel = (status: PaymentStatus) => t(paymentStatusKey(status));
   const payments = useApiQuery<Payment[]>("/payments");
   const parcels = useApiQuery<Parcel[]>(canCreate ? "/parcels" : null);
   const [selected, setSelected] = useState<number[]>([]);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<Payment | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const paymentList = useMemo(() => payments.data ?? [], [payments.data]);
 
   const eligible = useMemo(() => {
     const requested = new Set(
       paymentList
-        .filter((p) => ACTIVE.includes(p.status))
+        .filter((p) => ACTIVE.includes(normalizeStatus(p.status)))
         .flatMap((p) => p.items.map((i) => i.parcel.id)),
     );
     return (parcels.data ?? []).filter(
@@ -91,15 +138,16 @@ export function PaymentsManager({
   }, [parcels.data, paymentList]);
 
   const totals = useMemo(() => {
-    const sum = (status: PaymentStatus) =>
+    const sum = (statuses: PaymentStatus[]) =>
       paymentList
-        .filter((p) => p.status === status)
+        .filter((p) => statuses.includes(normalizeStatus(p.status)))
         .reduce((s, p) => s + toAmount(p.amount), 0);
     return {
-      enDemande: sum("EN_DEMANDE"),
-      approuve: sum("APPROUVE"),
-      paye: sum("PAYE"),
+      enDemande: sum(["EN_DEMANDE"]),
+      enCours: sum(["VALIDE_FINANCE", "VALIDE_CHEF", "VALIDE_EXPERT"]),
+      paye: sum(["PAYE"]),
       eligible: eligible.reduce((s, p) => s + toAmount(p.price), 0),
+      stress: paymentList.some((p) => p.budgetStress),
     };
   }, [paymentList, eligible]);
 
@@ -112,7 +160,10 @@ export function PaymentsManager({
   );
 
   const filtered = useMemo(
-    () => paymentList.filter((p) => filter === "ALL" || p.status === filter),
+    () =>
+      paymentList.filter(
+        (p) => filter === "ALL" || normalizeStatus(p.status) === filter,
+      ),
     [paymentList, filter],
   );
 
@@ -162,7 +213,7 @@ export function PaymentsManager({
     setBusyId(payment.id);
     try {
       await request(`/payments/${payment.id}/status`, "PATCH", { status });
-      toast.success(`Paiement #${payment.id} : ${STATUS_LABEL[status].toLowerCase()}`);
+      toast.success(`Paiement #${payment.id} : ${statusLabel(status).toLowerCase()}`);
       await reloadAll();
     } catch (err) {
       toast.error("Mise à jour impossible", errorText(err));
@@ -171,44 +222,119 @@ export function PaymentsManager({
     }
   }
 
+  async function runExpertBatch() {
+    setBatchBusy(true);
+    try {
+      const res = await request<{ paidCount: number }>("/payments/expert-batch", "POST", {});
+      toast.success(
+        "Batch expert",
+        `${res.paidCount} paiement(s) versés (priorité petits montants, 24h)`,
+      );
+      await reloadAll();
+    } catch (err) {
+      toast.error("Batch impossible", errorText(err));
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  function nextAction(payment: Payment): { status: PaymentStatus; label: string } | null {
+    const status = normalizeStatus(payment.status);
+    const requiresExpert = payment.requiresExpert ?? toAmount(payment.amount) >= 5000;
+    const isFinance = role === "FINANCE" || role === "SUPER_ADMIN" || role === "ADMIN" || role === "EXPERT_COMPTABLE";
+    const isChef = role === "CHEF_AGENCE" || role === "SUPER_ADMIN" || role === "ADMIN" || role === "EXPERT_COMPTABLE";
+    const isExpert = role === "EXPERT_COMPTABLE" || role === "SUPER_ADMIN" || role === "ADMIN";
+
+    if (status === "EN_DEMANDE" && isFinance) {
+      return { status: "VALIDE_FINANCE", label: "Valider finance" };
+    }
+    if (status === "VALIDE_FINANCE" && isChef) {
+      return { status: "VALIDE_CHEF", label: "Valider chef" };
+    }
+    if (status === "VALIDE_CHEF" && requiresExpert && isExpert) {
+      return { status: "VALIDE_EXPERT", label: "Valider expert" };
+    }
+    if (status === "VALIDE_CHEF" && !requiresExpert && (isChef || isFinance || isExpert)) {
+      return { status: "PAYE", label: "Verser" };
+    }
+    if (status === "VALIDE_EXPERT" && isExpert) {
+      return { status: "PAYE", label: "Verser" };
+    }
+    return null;
+  }
+
   const loadError = payments.error ?? parcels.error;
+  const canBatch =
+    canModerate &&
+    (role === "EXPERT_COMPTABLE" || role === "SUPER_ADMIN" || role === "ADMIN");
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Paiements"
+        title={t("payments.title")}
         description={
-          canModerate
-            ? "Validez et versez les montants COD aux expéditeurs"
-            : "Demandez le versement de vos colis livrés"
+          canModerate ? t("payments.descModerate") : t("payments.descCreate")
+        }
+        actions={
+          canBatch ? (
+            <Button
+              type="button"
+              variant="gold"
+              icon={Sparkles}
+              loading={batchBusy}
+              onClick={() => void runExpertBatch()}
+            >
+              {t("payments.batchExpert24h")}
+            </Button>
+          ) : undefined
         }
       />
 
       {loadError ? <ErrorBanner message={loadError} onRetry={() => void reloadAll()} /> : null}
 
+      {totals.stress && canModerate ? (
+        <Panel className="border-amber-200 bg-amber-50/70 text-sm text-ops-ink">
+          Budget caisse dépense ≤ 50k détecté — l’expert doit maximiser les versements sous 24h.
+        </Panel>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {canCreate ? (
           <StatCard
-            label="Disponible"
+            label={t("payments.available")}
             value={formatTnd(totals.eligible)}
-            hint={`${eligible.length} colis livré(s) à réclamer`}
+            hint={t("payments.eligibleHint", { count: eligible.length })}
             icon={HandCoins}
             tone="success"
           />
         ) : null}
-        <StatCard label="En demande" value={formatTnd(totals.enDemande)} icon={Clock3} tone="gold" />
-        <StatCard label="Approuvé" value={formatTnd(totals.approuve)} icon={Wallet} tone="brand" />
-        <StatCard label="Versé" value={formatTnd(totals.paye)} icon={Banknote} />
+        <StatCard
+          label={t("payments.inDemand")}
+          value={formatTnd(totals.enDemande)}
+          icon={Clock3}
+          tone="gold"
+        />
+        <StatCard
+          label={t("payments.inValidation")}
+          value={formatTnd(totals.enCours)}
+          icon={Wallet}
+          tone="brand"
+        />
+        <StatCard
+          label={t("payments.disbursed")}
+          value={formatTnd(totals.paye)}
+          icon={Banknote}
+        />
       </div>
 
       {canCreate ? (
         <Panel className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-lg font-bold text-ops-ink">Nouvelle demande</h2>
-              <p className="text-sm text-ops-ink/50">
-                Colis livrés non encore inclus dans une demande
-              </p>
+              <h2 className="font-display text-lg font-bold text-ops-ink">
+                {t("payments.newRequest")}
+              </h2>
+              <p className="text-sm text-ops-ink/50">{t("payments.newRequestHint")}</p>
             </div>
             {eligible.length > 0 ? (
               <label className="inline-flex items-center gap-2 text-sm font-medium text-ops-ink">
@@ -218,15 +344,22 @@ export function PaymentsManager({
                   checked={allSelected}
                   onChange={() => setSelected(allSelected ? [] : eligible.map((p) => p.id))}
                 />
-                Tout sélectionner
+                {t("payments.selectAll")}
               </label>
             ) : null}
           </div>
 
           {eligible.length === 0 ? (
-            <p className="rounded-xl bg-ops-ink/[0.05] px-4 py-6 text-center text-sm text-ops-ink/50">
-              {parcels.loading ? "Chargement…" : "Aucun colis livré à réclamer pour le moment."}
-            </p>
+            parcels.loading ? (
+              <p className="rounded-xl bg-ops-ink/[0.05] px-4 py-6 text-center text-sm text-ops-ink/50">
+                {t("common.loading")}
+              </p>
+            ) : (
+              <EmptyState
+                title={t("payments.noEligible")}
+                description={t("payments.noEligibleHint")}
+              />
+            )
           ) : (
             <ul className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
               {eligible.map((p) => {
@@ -262,7 +395,8 @@ export function PaymentsManager({
 
           <div className="flex flex-col gap-3 border-t border-ops-card pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ops-ink/50">
-              {selected.length} colis · <span className="font-bold text-ops-ink">{formatTnd(selectedTotal)}</span>
+              {selected.length} colis ·{" "}
+              <span className="font-bold text-ops-ink">{formatTnd(selectedTotal)}</span>
             </p>
             <Button
               icon={HandCoins}
@@ -270,7 +404,7 @@ export function PaymentsManager({
               disabled={selected.length === 0}
               onClick={() => void onRequest()}
             >
-              Demander le paiement
+              {t("payments.requestPayment")}
             </Button>
           </div>
         </Panel>
@@ -279,15 +413,19 @@ export function PaymentsManager({
       <TableCard
         toolbar={
           <SegmentedTabs<Filter>
-            label="Filtrer les demandes"
+            label={t("payments.filterRequests")}
             value={filter}
             onChange={setFilter}
             options={[
-              { value: "ALL", label: "Toutes", count: paymentList.length },
-              ...(Object.keys(STATUS_LABEL) as PaymentStatus[]).map((s) => ({
+              {
+                value: "ALL",
+                label: t("payments.allRequests"),
+                count: paymentList.length,
+              },
+              ...PIPELINE.map((s) => ({
                 value: s,
-                label: STATUS_LABEL[s],
-                count: paymentList.filter((p) => p.status === s).length,
+                label: statusLabel(s),
+                count: paymentList.filter((p) => normalizeStatus(p.status) === s).length,
               })),
             ]}
           />
@@ -301,135 +439,268 @@ export function PaymentsManager({
           </div>
         ) : visible.length === 0 ? (
           <div className="p-6">
-            <EmptyState icon={Wallet} title="Aucune demande" description="Les demandes de paiement apparaîtront ici." />
+            <EmptyState
+              icon={Wallet}
+              title={t("payments.emptyTitle")}
+              description={t("payments.emptyDescription")}
+            />
           </div>
         ) : (
-          <table className={tableClass}>
-            <thead className={theadClass}>
-              <tr>
-                <SortableTh
-                  label="Demande"
-                  column="id"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                {canModerate ? (
-                  <SortableTh
-                    label="Expéditeur"
-                    column="sender"
-                    activeKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                ) : null}
-                <SortableTh
-                  label="Colis"
-                  column="items"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Montant"
-                  column="amount"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                  className="text-right"
-                  buttonClassName="ml-auto"
-                />
-                <SortableTh
-                  label="Statut"
-                  column="status"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                {canModerate ? <th className={`${thClass} text-right`}>Actions</th> : null}
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="space-y-3 p-3 md:hidden">
               {visible.map((p) => {
                 const busy = busyId === p.id;
+                const status = normalizeStatus(p.status);
+                const action = canModerate ? nextAction(p) : null;
+                const canReject =
+                  canModerate &&
+                  status !== "PAYE" &&
+                  status !== "REJETE";
                 return (
-                  <tr key={p.id} className={trClass}>
-                    <td className={tdClass}>
-                      <p className="font-semibold text-ops-ink">#{p.id}</p>
-                      <p className="text-xs text-ops-ink/50">
-                        {new Date(p.createdAt).toLocaleDateString("fr-TN")}
-                        {p.note ? ` · ${p.note}` : ""}
-                      </p>
-                    </td>
-                    {canModerate ? (
-                      <td className={`${tdClass} text-ops-ink`}>{p.sender?.name ?? "—"}</td>
-                    ) : null}
-                    <td className={tdClass}>
-                      <div className="flex flex-wrap gap-1">
-                        {p.items.map((i) => (
-                          <span
-                            key={`${p.id}-${i.parcel.id}`}
-                            className="rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-ops-ink"
-                          >
-                            {i.parcel.code ?? `#${i.parcel.id}`}
-                          </span>
-                        ))}
+                  <li
+                    key={p.id}
+                    className="space-y-3 rounded-2xl border border-ops-card bg-ops-page/40 px-3.5 py-3.5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ops-ink">#{p.id}</p>
+                        <p className="mt-0.5 text-[12px] text-ops-ink/45">
+                          {new Date(p.createdAt).toLocaleDateString("fr-TN")}
+                          {p.note ? ` · ${p.note}` : ""}
+                        </p>
+                        {canModerate ? (
+                          <p className="mt-1 text-[12px] text-ops-ink/55">
+                            {p.sender?.name ?? "—"}
+                          </p>
+                        ) : null}
                       </div>
-                    </td>
-                    <td className={`${tdClass} whitespace-nowrap text-right font-bold text-ops-ink`}>
-                      {formatTnd(p.amount)}
-                    </td>
-                    <td className={tdClass}>
-                      <Badge tone={STATUS_TONE[p.status]} dot>
-                        {STATUS_LABEL[p.status]}
+                      <p className="shrink-0 font-display text-[15px] font-bold tabular-nums text-ops-ink">
+                        {formatTnd(p.amount)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {p.items.map((i) => (
+                        <span
+                          key={`${p.id}-${i.parcel.id}`}
+                          className="keep-ltr rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-ops-ink"
+                        >
+                          {i.parcel.code ?? `#${i.parcel.id}`}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={STATUS_TONE[status]} dot>
+                        {statusLabel(status)}
                       </Badge>
-                    </td>
-                    {canModerate ? (
-                      <td className={tdClass}>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          {p.status === "EN_DEMANDE" ? (
-                            <Button
-                              size="sm"
-                              variant="success"
-                              icon={CheckCircle2}
-                              loading={busy}
-                              onClick={() => void setStatus(p, "APPROUVE")}
-                            >
-                              Approuver
-                            </Button>
-                          ) : null}
-                          {p.status === "APPROUVE" ? (
-                            <Button
-                              size="sm"
-                              variant="gold"
-                              icon={Banknote}
-                              loading={busy}
-                              onClick={() => void setStatus(p, "PAYE")}
-                            >
-                              Marquer payé
-                            </Button>
-                          ) : null}
-                          {p.status === "EN_DEMANDE" || p.status === "APPROUVE" ? (
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              icon={XCircle}
-                              disabled={busy}
-                              onClick={() => void setStatus(p, "REJETE")}
-                            >
-                              Rejeter
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
+                      {p.budgetStress ? (
+                        <span className="text-[10px] text-amber-700">Budget ≤ 50k</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setDetail(p)}
+                        className="ms-auto inline-flex items-center gap-1 text-[12px] font-semibold text-ops-accent"
+                      >
+                        {t("payments.viewDetail")}
+                        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </div>
+                    {canModerate && (action || canReject) ? (
+                      <div className="flex flex-wrap gap-2 border-t border-ops-card pt-3">
+                        {action ? (
+                          <Button
+                            size="sm"
+                            variant={action.status === "PAYE" ? "gold" : "success"}
+                            icon={action.status === "PAYE" ? Banknote : CheckCircle2}
+                            loading={busy}
+                            onClick={() => void setStatus(p, action.status)}
+                          >
+                            {action.label}
+                          </Button>
+                        ) : null}
+                        {canReject ? (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            icon={XCircle}
+                            disabled={busy}
+                            onClick={() => void setStatus(p, "REJETE")}
+                          >
+                            {t("common.reject")}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
-                  </tr>
+                  </li>
                 );
               })}
-            </tbody>
-          </table>
+            </ul>
+            <div className="hidden md:block">
+              <table className={tableClass}>
+                <thead className={theadClass}>
+                  <tr>
+                    <SortableTh
+                      label={t("payments.requestCol")}
+                      column="id"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    {canModerate ? (
+                      <SortableTh
+                        label={t("parcels.sender")}
+                        column="sender"
+                        activeKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    ) : null}
+                    <SortableTh
+                      label={t("nav.parcels")}
+                      column="items"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label={t("common.amount")}
+                      column="amount"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("common.status")}
+                      column="status"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <th className={`${thClass} text-right`}>{t("common.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((p) => {
+                    const busy = busyId === p.id;
+                    const status = normalizeStatus(p.status);
+                    const action = canModerate ? nextAction(p) : null;
+                    const canReject =
+                      canModerate &&
+                      status !== "PAYE" &&
+                      status !== "REJETE";
+                    return (
+                      <tr key={p.id} className={trClass}>
+                        <td className={tdClass}>
+                          <button
+                            type="button"
+                            onClick={() => setDetail(p)}
+                            className="text-left"
+                          >
+                            <p className="font-semibold text-ops-ink hover:text-ops-accent">
+                              #{p.id}
+                            </p>
+                            <p className="text-xs text-ops-ink/50">
+                              {new Date(p.createdAt).toLocaleDateString("fr-TN")}
+                              {p.note ? ` · ${p.note}` : ""}
+                            </p>
+                          </button>
+                        </td>
+                        {canModerate ? (
+                          <td className={`${tdClass} text-ops-ink`}>
+                            {p.sender?.name ?? "—"}
+                          </td>
+                        ) : null}
+                        <td className={tdClass}>
+                          <div className="flex flex-wrap gap-1">
+                            {p.items.map((i) => (
+                              <span
+                                key={`${p.id}-${i.parcel.id}`}
+                                className="keep-ltr rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-ops-ink"
+                              >
+                                {i.parcel.code ?? `#${i.parcel.id}`}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td
+                          className={`${tdClass} whitespace-nowrap text-right font-bold text-ops-ink`}
+                        >
+                          {formatTnd(p.amount)}
+                        </td>
+                        <td className={tdClass}>
+                          <Badge tone={STATUS_TONE[status]} dot>
+                            {statusLabel(status)}
+                          </Badge>
+                          {p.budgetStress ? (
+                            <span className="mt-1 block text-[10px] text-amber-700">
+                              Budget ≤ 50k
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className={tdClass}>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setDetail(p)}
+                            >
+                              {t("payments.viewDetail")}
+                            </Button>
+                            {action ? (
+                              <Button
+                                size="sm"
+                                variant={
+                                  action.status === "PAYE" ? "gold" : "success"
+                                }
+                                icon={
+                                  action.status === "PAYE"
+                                    ? Banknote
+                                    : CheckCircle2
+                                }
+                                loading={busy}
+                                onClick={() => void setStatus(p, action.status)}
+                              >
+                                {action.label}
+                              </Button>
+                            ) : null}
+                            {canReject ? (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                icon={XCircle}
+                                disabled={busy}
+                                onClick={() => void setStatus(p, "REJETE")}
+                              >
+                                {t("common.reject")}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </TableCard>
+
+      <PaymentDetailModal
+        payment={detail}
+        onClose={() => setDetail(null)}
+        statusLabel={statusLabel}
+        statusTone={STATUS_TONE}
+        historyTitle={t("payments.historyTitle")}
+        historyEmpty={t("payments.historyEmpty")}
+        parcelsTitle={t("payments.detailParcels")}
+        title={
+          detail
+            ? t("payments.detailTitle", { id: detail.id })
+            : t("payments.viewDetail")
+        }
+      />
 
       {canCreate && eligible.length > 0 ? (
         <p className="text-xs text-ops-ink/50">
@@ -437,5 +708,135 @@ export function PaymentsManager({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function paymentHistory(payment: Payment): PaymentHistoryEntry[] {
+  if (payment.history?.length) return payment.history;
+  const status = normalizeStatus(payment.status);
+  const entries: PaymentHistoryEntry[] = [
+    {
+      at: payment.createdAt,
+      status: "EN_DEMANDE",
+      label: "Demande créée",
+      actorName: payment.sender?.name ?? null,
+    },
+  ];
+  if (status !== "EN_DEMANDE") {
+    entries.push({
+      at: payment.updatedAt ?? payment.createdAt,
+      status,
+      label: status,
+      actorName: null,
+    });
+  }
+  return entries;
+}
+
+function PaymentDetailModal({
+  payment,
+  onClose,
+  title,
+  historyTitle,
+  historyEmpty,
+  parcelsTitle,
+  statusLabel,
+  statusTone,
+}: {
+  payment: Payment | null;
+  onClose: () => void;
+  title: string;
+  historyTitle: string;
+  historyEmpty: string;
+  parcelsTitle: string;
+  statusLabel: (status: PaymentStatus) => string;
+  statusTone: Record<PaymentStatus, BadgeTone>;
+}) {
+  const history = payment ? paymentHistory(payment) : [];
+  return (
+    <Modal
+      open={Boolean(payment)}
+      onClose={onClose}
+      title={title}
+      description={
+        payment
+          ? `${formatTnd(payment.amount)} · ${new Date(payment.createdAt).toLocaleString("fr-TN")}`
+          : undefined
+      }
+      size="md"
+      footer={
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>
+            Fermer
+          </Button>
+        </div>
+      }
+    >
+      {payment ? (
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={statusTone[normalizeStatus(payment.status)]} dot>
+              {statusLabel(normalizeStatus(payment.status))}
+            </Badge>
+            {payment.note ? (
+              <p className="text-sm text-ops-ink/55">{payment.note}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <h3 className="text-[13px] font-semibold text-ops-ink">
+              {parcelsTitle}
+            </h3>
+            <ul className="mt-2 space-y-1.5">
+              {payment.items.map((item) => (
+                <li
+                  key={item.parcel.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-ops-card px-3 py-2 text-sm"
+                >
+                  <span className="font-mono font-semibold text-ops-ink">
+                    {item.parcel.code ?? `#${item.parcel.id}`}
+                  </span>
+                  <span className="tabular-nums font-semibold text-ops-ink">
+                    {formatTnd(item.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-[13px] font-semibold text-ops-ink">
+              {historyTitle}
+            </h3>
+            {history.length === 0 ? (
+              <p className="mt-2 text-sm text-ops-ink/45">{historyEmpty}</p>
+            ) : (
+              <ol className="relative mt-3 space-y-0 border-s border-ops-card ms-2 ps-4">
+                {[...history]
+                  .sort(
+                    (a, b) =>
+                      new Date(a.at).getTime() - new Date(b.at).getTime(),
+                  )
+                  .map((ev, index) => (
+                    <li key={`${ev.at}-${ev.status}-${index}`} className="pb-4 last:pb-0">
+                      <span
+                        className="absolute -start-[5px] mt-1.5 h-2.5 w-2.5 rounded-full border-2 border-ops-page bg-ops-accent"
+                        aria-hidden
+                      />
+                      <p className="text-[13px] font-semibold text-ops-ink">
+                        {ev.label || statusLabel(normalizeStatus(ev.status))}
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-ops-ink/45">
+                        {new Date(ev.at).toLocaleString("fr-TN")}
+                        {ev.actorName ? ` · ${ev.actorName}` : ""}
+                      </p>
+                    </li>
+                  ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </Modal>
   );
 }

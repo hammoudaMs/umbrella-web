@@ -16,6 +16,7 @@ export type AuthSession = {
     role: AppRole;
     phone?: string | null;
     agencyId?: number | null;
+    productTypes?: string[];
   };
 };
 
@@ -101,12 +102,13 @@ async function httpRequest<T>(
   init: RequestInit,
   token: string | undefined,
 ): Promise<T> {
+  const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: {
-        "Content-Type": "application/json",
+        ...(isForm ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
@@ -132,7 +134,12 @@ export async function apiFetch<T>(
   const method = (init.method ?? "GET").toUpperCase();
   const send = (accessToken: string | undefined) =>
     USE_MOCK
-      ? mockRequest<T>(method, path, parseBody(init.body), accessToken)
+      ? mockRequest<T>(
+          method,
+          path,
+          init.body instanceof FormData ? { __form: true } : parseBody(init.body),
+          accessToken,
+        )
       : httpRequest<T>(path, { ...init, method }, accessToken);
 
   try {
@@ -143,4 +150,19 @@ export async function apiFetch<T>(
     if (!renewed) throw error;
     return send(renewed);
   }
+}
+
+export async function apiUpload(
+  file: File,
+  token: string,
+  kind?: string,
+): Promise<{ url: string; kind?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  return apiFetch<{ url: string; kind?: string }>(`/uploads${qs}`, {
+    method: "POST",
+    body: form,
+    token,
+  });
 }

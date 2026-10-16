@@ -3,12 +3,14 @@
 import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
+import type { AppRole } from "@/lib/roles";
 import {
   PortalShell,
   type PortalNavItem,
   type PortalNavSection,
 } from "@/components/PortalShell";
+import { useT } from "@/i18n/locale-context";
+import { roleHomeUrl } from "@/tenants/resolve";
 
 type RequireRoleProps = {
   children: React.ReactNode;
@@ -27,23 +29,30 @@ function Guard({
   links,
   sections,
 }: RequireRoleProps) {
-  const { session } = useAuth();
+  const { session, ready } = useAuth();
   const router = useRouter();
+  const t = useT();
 
   useEffect(() => {
+    if (!ready) return;
     if (!session) {
       router.replace("/login");
       return;
     }
     if (!roles.includes(session.user.role)) {
-      router.replace(PORTAL_BY_ROLE[session.user.role] ?? "/login");
+      const home = roleHomeUrl(session.user.role);
+      if (home.startsWith("http")) {
+        window.location.assign(home);
+        return;
+      }
+      router.replace(home || "/login");
     }
-  }, [session, roles, router]);
+  }, [ready, session, roles, router]);
 
-  if (!session || !roles.includes(session.user.role)) {
+  if (!ready || !session || !roles.includes(session.user.role)) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-muted">
-        Vérification de session...
+        {t("common.sessionCheck")}
       </div>
     );
   }
@@ -66,7 +75,7 @@ export function RequireRole(props: RequireRoleProps) {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center text-ink-muted">
-          Chargement...
+          …
         </div>
       }
     >

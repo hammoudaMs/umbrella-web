@@ -1,7 +1,9 @@
 "use client";
 
 import { SettingsForm } from "@/components/SettingsForm";
+import { useT } from "@/i18n/locale-context";
 
 export default function ClientSettingsPage() {
-  return <SettingsForm description="Compte client" />;
+  const t = useT();
+  return <SettingsForm description={t("settings.descClient")} />;
 }

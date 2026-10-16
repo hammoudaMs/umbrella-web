@@ -1,14 +1,21 @@
 "use client";
 
-import { MARQUEE_STATS } from "@/components/landing/landing-data";
+import { MARQUEE_STAT_KEYS } from "@/components/landing/landing-data";
+import { useT } from "@/i18n/locale-context";
 
-function MarqueeSequence({ duplicate = false }: { duplicate?: boolean }) {
+function MarqueeSequence({
+  labels,
+  duplicate = false,
+}: {
+  labels: string[];
+  duplicate?: boolean;
+}) {
   return (
     <ul
       className="flex shrink-0 list-none items-center"
       aria-hidden={duplicate || undefined}
     >
-      {MARQUEE_STATS.map((stat) => (
+      {labels.map((stat) => (
         <li
           key={`${duplicate ? "b" : "a"}-${stat}`}
           className="inline-flex shrink-0 items-center"
@@ -31,17 +38,19 @@ function MarqueeSequence({ duplicate = false }: { duplicate?: boolean }) {
 /**
  * Seamless infinite status strip.
  * Two identical sequences + CSS translate -50% = no seam hitch.
- * Animation never pauses (hover included).
  */
 export function LandingMarquee() {
+  const t = useT();
+  const labels = MARQUEE_STAT_KEYS.map((key) => t(key));
+
   return (
     <div
       className="marquee-band relative z-30 h-10 shrink-0 overflow-hidden border-t border-white/10 bg-[#7a0e0e] sm:h-11"
       aria-hidden
     >
       <div className="marquee-track flex h-full w-max items-center will-change-transform">
-        <MarqueeSequence />
-        <MarqueeSequence duplicate />
+        <MarqueeSequence labels={labels} />
+        <MarqueeSequence labels={labels} duplicate />
       </div>
     </div>
   );

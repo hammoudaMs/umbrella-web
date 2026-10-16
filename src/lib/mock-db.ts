@@ -30,6 +30,7 @@ import {
   type MockUser,
   type MockZone,
 } from "@/lib/mock-data";
+import { mockDocUrl } from "@/lib/mock-docs";
 import { AGENCY_ROLES, roleNeedsAgency } from "@/lib/roles";
 import {
   canTransition,
@@ -56,7 +57,7 @@ import {
  * so the UI behaves the same with NEXT_PUBLIC_USE_MOCK=true or against umbrella/api.
  */
 
-const STORAGE_KEY = "umbrella.mock-db.v12";
+const STORAGE_KEY = "umbrella.mock-db.v14";
 export const MOCK_RESET_EVENT = "umbrella:mock-db-reset";
 const MAX_RETURN_LOT = 20;
 const MAX_PICKUP_MANIFEST = 20;
@@ -67,6 +68,8 @@ type MockReturnLot = {
   senderId: number;
   status: "OPEN" | "CLOSED";
   parcelIds: number[];
+  destinationLabel: string | null;
+  destinationAgencyId: number | null;
   closedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +83,8 @@ type MockPickupManifest = {
   createdById: number;
   senderId: number | null;
   parcelIds: number[];
+  dechargeUrl: string | null;
+  cinUrl: string | null;
   closedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -114,6 +119,49 @@ type MockCall = {
   createdAt: string;
 };
 
+type MockCashMovement = {
+  id: number;
+  registerId: number;
+  type: "IN" | "OUT";
+  amount: number;
+  label: string;
+  note: string | null;
+  receiptUrl?: string | null;
+  invoiceRef?: string | null;
+  depositId?: number | null;
+  actorId: number | null;
+  parcelId: number | null;
+  livreurId: number | null;
+  createdAt: string;
+};
+
+type MockLivreurDeposit = {
+  id: number;
+  livreurId: number;
+  agencyId: number | null;
+  amount: number;
+  expectedAmount: number;
+  receiptUrl: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED";
+  runsheetParcelIds: number[];
+  rejectReason: string | null;
+  reviewedById: number | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type MockCashRegister = {
+  id: number;
+  kind: "DEPENSE" | "COD";
+  name: string;
+  agencyId: number | null;
+  balance: number;
+  isActive: boolean;
+  movements: MockCashMovement[];
+  updatedAt: string;
+};
+
 type MockDb = {
   users: MockUser[];
   parcels: MockParcel[];
@@ -128,6 +176,8 @@ type MockDb = {
   calls: MockCall[];
   returnLots: MockReturnLot[];
   pickupManifests: MockPickupManifest[];
+  cashRegisters: MockCashRegister[];
+  livreurDeposits: MockLivreurDeposit[];
 };
 
 type Actor = {
@@ -150,8 +200,14 @@ export class MockHttpError extends Error {
   }
 }
 
-const STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN"];
-const MONEY_STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN", "FINANCE"];
+const STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN", "EXPERT_COMPTABLE"];
+const MONEY_STAFF: AppRole[] = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "EXPERT_COMPTABLE",
+  "CHEF_AGENCE",
+  "FINANCE",
+];
 const OPS_STAFF: AppRole[] = ["SUPER_ADMIN", "ADMIN", "CHEF_AGENCE"];
 const RETURN_STATUSES_LIST = [
   "LIVRAISON_ANNULEE",
@@ -165,10 +221,20 @@ const DELIVERED = ["LIVRES", "LIVRES_PAYES"];
 const SENDER_EDITABLE = ["EN_ATTENTE", "NON_SERIEUX"];
 const CLIENT_EDITABLE = ["EN_ATTENTE", "A_ENLEVER", "NON_SERIEUX"];
 const RETURN_PREFIX = "RETOUR";
-const ACTIVE_PAYMENT: PaymentStatus[] = ["EN_DEMANDE", "APPROUVE", "PAYE"];
+const ACTIVE_PAYMENT: PaymentStatus[] = [
+  "EN_DEMANDE",
+  "VALIDE_FINANCE",
+  "VALIDE_CHEF",
+  "VALIDE_EXPERT",
+  "APPROUVE",
+  "PAYE",
+];
 const PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
-  EN_DEMANDE: ["APPROUVE", "REJETE"],
-  APPROUVE: ["PAYE", "REJETE"],
+  EN_DEMANDE: ["VALIDE_FINANCE", "APPROUVE", "REJETE"],
+  VALIDE_FINANCE: ["VALIDE_CHEF", "REJETE"],
+  VALIDE_CHEF: ["VALIDE_EXPERT", "PAYE", "REJETE"],
+  VALIDE_EXPERT: ["PAYE", "REJETE"],
+  APPROUVE: ["VALIDE_CHEF", "PAYE", "REJETE"],
   PAYE: [],
   REJETE: [],
 };
@@ -289,6 +355,8 @@ function seedDb(): MockDb {
             senderId: expediteur.id,
             status: "OPEN",
             parcelIds: returnParcelIds,
+            destinationLabel: "Dépôt central Tunis",
+            destinationAgencyId: null,
             closedAt: null,
             createdAt: seededAt,
             updatedAt: seededAt,
@@ -312,6 +380,8 @@ function seedDb(): MockDb {
       createdById: expediteur.id,
       senderId: expediteur.id,
       parcelIds: attenteParcelIds,
+      dechargeUrl: null,
+      cinUrl: null,
       closedAt: null,
       createdAt: seededAt,
       updatedAt: seededAt,
@@ -326,11 +396,143 @@ function seedDb(): MockDb {
       createdById: pickupUser.id,
       senderId: expediteur.id,
       parcelIds: preParcelIds,
+      dechargeUrl: null,
+      cinUrl: null,
       closedAt: null,
       createdAt: seededAt,
       updatedAt: seededAt,
     });
   }
+
+  const expert = MOCK_USERS.find((u) => u.role === "EXPERT_COMPTABLE");
+  const magasinier = MOCK_USERS.find((u) => u.role === "MAGASINIER");
+  const firstAgency = agencies[0] ?? null;
+
+  // Attach sample PDFs on pickup manifests so formats are clickable in demo
+  if (pickupManifests[0]) {
+    pickupManifests[0].dechargeUrl = mockDocUrl("decharge");
+    pickupManifests[0].cinUrl = mockDocUrl("cin");
+  }
+
+  const depenseRegister: MockCashRegister = {
+    id: 2,
+    kind: "DEPENSE",
+    name: firstAgency
+      ? `Caisse dépense — ${firstAgency.name}`
+      : "Caisse dépense — Agence",
+    agencyId: firstAgency?.id ?? null,
+    balance: 180,
+    isActive: true,
+    movements: [
+      {
+        id: 1,
+        registerId: 2,
+        type: "IN",
+        amount: 500,
+        label: "Fond de caisse initial (demo)",
+        note: "Seed mock",
+        receiptUrl: null,
+        invoiceRef: null,
+        actorId: expert?.id ?? null,
+        parcelId: null,
+        livreurId: null,
+        createdAt: seededAt,
+      },
+      {
+        id: 2,
+        registerId: 2,
+        type: "OUT",
+        amount: 320,
+        label: `Facture FAC-EXP-2026-0042 — Carburant flotte`,
+        note: "PDF facture mock",
+        receiptUrl: mockDocUrl("facture"),
+        invoiceRef: "FAC-EXP-2026-0042",
+        actorId: expert?.id ?? null,
+        parcelId: null,
+        livreurId: null,
+        createdAt: seededAt,
+      },
+    ],
+    updatedAt: seededAt,
+  };
+
+  const otherDepense = agencies.slice(1).map((a, i) => ({
+    id: i + 3,
+    kind: "DEPENSE" as const,
+    name: `Caisse dépense — ${a.name}`,
+    agencyId: a.id,
+    balance: 0,
+    isActive: true,
+    movements: [] as MockCashMovement[],
+    updatedAt: seededAt,
+  }));
+
+  const cashRegisters: MockCashRegister[] = [
+    {
+      id: 1,
+      kind: "COD",
+      name: "Caisse COD — globale livreurs",
+      agencyId: null,
+      balance: 245.5,
+      isActive: true,
+      movements: [
+        {
+          id: 1,
+          registerId: 1,
+          type: "IN",
+          amount: 245.5,
+          label: "Versement livreur (demo accepté)",
+          note: "Reçu mock PDF",
+          receiptUrl: mockDocUrl("receipt"),
+          invoiceRef: null,
+          depositId: 2,
+          actorId: magasinier?.id ?? expert?.id ?? null,
+          parcelId: null,
+          livreurId: livreur?.id ?? null,
+          createdAt: seededAt,
+        },
+      ],
+      updatedAt: seededAt,
+    },
+    depenseRegister,
+    ...otherDepense,
+  ];
+
+  const livreurDeposits: MockLivreurDeposit[] =
+    livreur
+      ? [
+          {
+            id: 1,
+            livreurId: livreur.id,
+            agencyId: livreur.agencyId ?? firstAgency?.id ?? null,
+            amount: 120,
+            expectedAmount: 120,
+            receiptUrl: mockDocUrl("receipt"),
+            status: "PENDING",
+            runsheetParcelIds: [],
+            rejectReason: null,
+            reviewedById: null,
+            reviewedAt: null,
+            createdAt: seededAt,
+            updatedAt: seededAt,
+          },
+          {
+            id: 2,
+            livreurId: livreur.id,
+            agencyId: livreur.agencyId ?? firstAgency?.id ?? null,
+            amount: 245.5,
+            expectedAmount: 245.5,
+            receiptUrl: mockDocUrl("receipt"),
+            status: "ACCEPTED",
+            runsheetParcelIds: [],
+            rejectReason: null,
+            reviewedById: magasinier?.id ?? expert?.id ?? null,
+            reviewedAt: seededAt,
+            createdAt: seededAt,
+            updatedAt: seededAt,
+          },
+        ]
+      : [];
 
   return structuredClone({
     users: MOCK_USERS.map((u) => ({ ...u, createdAt: u.createdAt ?? seededAt })),
@@ -350,6 +552,8 @@ function seedDb(): MockDb {
     calls: [],
     returnLots,
     pickupManifests,
+    cashRegisters,
+    livreurDeposits,
   });
 }
 
@@ -373,7 +577,86 @@ function isMockDb(value: unknown): value is MockDb {
   if (!Array.isArray(v.messages)) v.messages = [];
   if (!Array.isArray(v.calls)) v.calls = [];
   if (!Array.isArray(v.returnLots)) v.returnLots = [];
+  else {
+    for (const lot of v.returnLots as MockReturnLot[]) {
+      if (lot.destinationLabel === undefined) lot.destinationLabel = null;
+      if (lot.destinationAgencyId === undefined) lot.destinationAgencyId = null;
+    }
+  }
   if (!Array.isArray(v.pickupManifests)) v.pickupManifests = [];
+  else {
+    for (const m of v.pickupManifests as MockPickupManifest[]) {
+      if (m.dechargeUrl === undefined) m.dechargeUrl = null;
+      if (m.cinUrl === undefined) m.cinUrl = null;
+    }
+  }
+  if (!Array.isArray(v.livreurDeposits)) v.livreurDeposits = [];
+  // One-shot: attach sample PDF URLs so existing demo DBs get clickable templates
+  const meta = v as Record<string, unknown>;
+  if (meta.mockDocsSeeded !== true) {
+    const users = v.users as MockUser[];
+    const livreurUser = users.find((u) => u.role === "LIVREUR");
+    const manifests = v.pickupManifests as MockPickupManifest[];
+    if (manifests[0] && !manifests[0].dechargeUrl) {
+      manifests[0].dechargeUrl = mockDocUrl("decharge");
+      manifests[0].cinUrl = mockDocUrl("cin");
+    }
+    for (const p of v.parcels as MockParcel[]) {
+      if (p.bordereauUrl?.includes("example.com")) {
+        p.bordereauUrl = p.mode === "EXTERNAL"
+          ? mockDocUrl("bordereau_externe")
+          : mockDocUrl("bordereau");
+      }
+    }
+    if (
+      livreurUser &&
+      (v.livreurDeposits as MockLivreurDeposit[]).length === 0
+    ) {
+      const at = nowIso();
+      (v.livreurDeposits as MockLivreurDeposit[]).push({
+        id: 1,
+        livreurId: livreurUser.id,
+        agencyId: livreurUser.agencyId ?? null,
+        amount: 120,
+        expectedAmount: 120,
+        receiptUrl: mockDocUrl("receipt"),
+        status: "PENDING",
+        runsheetParcelIds: [],
+        rejectReason: null,
+        reviewedById: null,
+        reviewedAt: null,
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+    meta.mockDocsSeeded = true;
+  }
+  if (!Array.isArray(v.cashRegisters)) {
+    const agenciesSeed = (v.agencies as Agency[]) ?? MOCK_AGENCIES;
+    const at = nowIso();
+    v.cashRegisters = [
+      {
+        id: 1,
+        kind: "COD",
+        name: "Caisse COD — globale livreurs",
+        agencyId: null,
+        balance: 0,
+        isActive: true,
+        movements: [],
+        updatedAt: at,
+      },
+      ...agenciesSeed.map((a, i) => ({
+        id: i + 2,
+        kind: "DEPENSE" as const,
+        name: `Caisse dépense — ${a.name}`,
+        agencyId: a.id,
+        balance: 0,
+        isActive: true,
+        movements: [],
+        updatedAt: at,
+      })),
+    ];
+  }
   const agencies = v.agencies as Agency[];
   const agencyByGov = new Map(
     agencies.map((a) => [a.governorate.toLowerCase(), a.id] as const),
@@ -517,6 +800,7 @@ function sessionFor(user: MockUser): AuthSession {
       role: user.role,
       phone: user.phone,
       agencyId: user.agencyId ?? null,
+      productTypes: user.productTypes ?? [],
     },
   };
 }
@@ -526,6 +810,7 @@ function actorFromToken(token?: string): Actor | null {
   const id = Number(token.replace("mock-access-", ""));
   const user = db().users.find((u) => u.id === id && u.isActive);
   if (!user) return null;
+  if ((user.approvalStatus ?? "APPROVED") !== "APPROVED") return null;
   return {
     id: user.id,
     role: user.role,
@@ -1004,6 +1289,12 @@ function summarizeReturnLot(lot: MockReturnLot): ReturnLot {
     sender: sender
       ? { id: sender.id, name: sender.name, email: sender.email }
       : null,
+    destinationLabel: lot.destinationLabel,
+    destinationAgencyId: lot.destinationAgencyId,
+    destinationAgency: lot.destinationAgencyId
+      ? db().agencies.find((a) => a.id === lot.destinationAgencyId) ?? null
+      : null,
+    colisCount: parcels.length,
     itemCount: parcels.length,
     closedAt: lot.closedAt,
     createdAt: lot.createdAt,
@@ -1055,6 +1346,8 @@ function summarizePickupManifest(m: MockPickupManifest): PickupManifest {
     createdBy: createdBy
       ? { id: createdBy.id, name: createdBy.name, email: createdBy.email }
       : null,
+    dechargeUrl: m.dechargeUrl,
+    cinUrl: m.cinUrl,
     itemCount: parcels.length,
     closedAt: m.closedAt,
     createdAt: m.createdAt,
@@ -1185,6 +1478,25 @@ function trackParcel(code: string) {
     name.length <= 2
       ? `${name[0] ?? "*"}*`
       : `${name.slice(0, 1)}${"*".repeat(Math.min(name.length - 1, 6))}`;
+  let timeline = (parcel.timeline ?? []).map((e) => ({
+    at: e.at,
+    label: e.comment ? e.label.replace(` — ${e.comment}`, "") : e.label,
+    status: e.status ?? null,
+  }));
+  const livresLabel = EVENT_LABEL.LIVRES;
+  const hasLivres = timeline.some(
+    (e) => e.status === "LIVRES" || e.label === livresLabel,
+  );
+  if (parcel.status === "LIVRES" && !hasLivres) {
+    timeline = [
+      ...timeline,
+      {
+        at: parcel.updatedAt ?? parcel.createdAt,
+        label: livresLabel,
+        status: "LIVRES",
+      },
+    ];
+  }
   return {
     code: parcel.code,
     status: parcel.status,
@@ -1192,10 +1504,7 @@ function trackParcel(code: string) {
     city: parcel.city,
     governorate: parcel.governorate,
     updatedAt: parcel.updatedAt ?? parcel.createdAt,
-    timeline: (parcel.timeline ?? []).map((e) => ({
-      at: e.at,
-      label: e.comment ? e.label.replace(` — ${e.comment}`, "") : e.label,
-    })),
+    timeline,
   };
 }
 
@@ -1210,8 +1519,40 @@ function statusCounts(actor: Actor): StatusCard[] {
   }));
 }
 
+const PAYMENT_HISTORY_LABEL: Partial<Record<PaymentStatus, string>> = {
+  EN_DEMANDE: "Demande créée",
+  VALIDE_FINANCE: "Validé finance",
+  VALIDE_CHEF: "Validé chef d’agence",
+  VALIDE_EXPERT: "Validé expert",
+  APPROUVE: "Validé finance",
+  PAYE: "Versé",
+  REJETE: "Rejeté",
+};
+
+function withPaymentHistory(payment: MockPayment): MockPayment {
+  if (payment.history?.length) return payment;
+  const status = normalizePaymentStatus(payment.status);
+  const history = [
+    {
+      at: payment.createdAt,
+      status: "EN_DEMANDE" as PaymentStatus,
+      label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Demande créée",
+      actorName: payment.sender?.name ?? null,
+    },
+  ];
+  if (status !== "EN_DEMANDE") {
+    history.push({
+      at: payment.updatedAt ?? payment.createdAt,
+      status,
+      label: PAYMENT_HISTORY_LABEL[status] ?? status,
+      actorName: null,
+    });
+  }
+  return { ...payment, history };
+}
+
 function senderPayments(actor: Actor) {
-  const payments = db().payments;
+  const payments = db().payments.map(withPaymentHistory);
   return isMoneyStaff(actor)
     ? payments
     : payments.filter((p) => p.sender?.email === actor.email);
@@ -1489,21 +1830,64 @@ function createPayment(actor: Actor, dto: Record<string, unknown>) {
       ? { id: sender.id, name: sender.name, email: sender.email }
       : undefined,
     items: parcels.map((p) => ({ parcel: { id: p.id, code: p.code }, amount: p.price })),
+    history: [
+      {
+        at,
+        status: "EN_DEMANDE",
+        label: "Demande créée",
+        actorName: actor.name,
+      },
+    ],
   };
   db().payments.unshift(payment);
   commit();
   return payment;
 }
 
+function normalizePaymentStatus(status: PaymentStatus): PaymentStatus {
+  return status === "APPROUVE" ? "VALIDE_FINANCE" : status;
+}
+
 function updatePaymentStatus(actor: Actor, id: number, dto: Record<string, unknown>) {
   const payment = db().payments.find((p) => p.id === id);
   if (!payment) throw new MockHttpError(404, "Demande introuvable");
-  const status = dto.status as PaymentStatus;
-  if (!PAYMENT_TRANSITIONS[payment.status]?.includes(status)) {
-    throw new MockHttpError(400, `Transition ${payment.status} → ${String(status)} impossible`);
+  const current = normalizePaymentStatus(payment.status);
+  const status = normalizePaymentStatus(dto.status as PaymentStatus);
+  const amount = payment.amount;
+  const requiresExpert = amount >= 5000;
+  if (status === "REJETE") {
+    if (current === "PAYE" || current === "REJETE") {
+      throw new MockHttpError(400, "Demande déjà clôturée");
+    }
+  } else if (current === "VALIDE_CHEF" && status === "PAYE" && requiresExpert) {
+    throw new MockHttpError(400, "Validation expert requise (≥ 5k ou budget ≤ 50k)");
+  } else if (!PAYMENT_TRANSITIONS[current]?.includes(status)) {
+    throw new MockHttpError(400, `Transition ${current} → ${String(status)} impossible`);
   }
+  const at = nowIso();
+  const existingHistory = payment.history ?? [];
+  const priorHistory =
+    existingHistory.length > 0
+      ? existingHistory
+      : [
+          {
+            at: payment.createdAt,
+            status: "EN_DEMANDE" as PaymentStatus,
+            label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Demande créée",
+            actorName: payment.sender?.name ?? null,
+          },
+        ];
   payment.status = status;
-  payment.updatedAt = nowIso();
+  payment.updatedAt = at;
+  payment.history = [
+    ...priorHistory,
+    {
+      at,
+      status,
+      label: PAYMENT_HISTORY_LABEL[status] ?? status,
+      actorName: actor.name,
+    },
+  ];
   if (status === "PAYE") {
     for (const item of payment.items) {
       const parcel = db().parcels.find((p) => p.id === item.parcel.id);
@@ -1517,7 +1901,11 @@ function updatePaymentStatus(actor: Actor, id: number, dto: Record<string, unkno
     }
   }
   commit();
-  return payment;
+  return {
+    ...payment,
+    isSmall: amount < 5000,
+    requiresExpert,
+  };
 }
 
 function zonesFor(actor: Actor) {
@@ -1565,6 +1953,7 @@ function usersFor(actor: Actor) {
 const ALL_ROLES: AppRole[] = [
   "SUPER_ADMIN",
   "ADMIN",
+  "EXPERT_COMPTABLE",
   "CHEF_AGENCE",
   "SUPPORT",
   "PICKUP",
@@ -1577,6 +1966,8 @@ const ALL_ROLES: AppRole[] = [
 
 const ADMIN_CREATABLE: AppRole[] = [
   "ADMIN",
+  "EXPERT_COMPTABLE",
+  "CHEF_AGENCE",
   "FINANCE",
   "SUPPORT",
   "PICKUP",
@@ -1764,6 +2155,17 @@ function updateProfile(actor: Actor, dto: Record<string, unknown>) {
   if (name) user.name = name;
   if (email) user.email = email;
   if (phone) user.phone = phone;
+  if (Array.isArray(dto.productTypes)) {
+    user.productTypes = dto.productTypes
+      .map((t) => String(t).trim())
+      .filter((t) => t.length >= 2 && t.length <= 80)
+      .filter(
+        (t, i, all) =>
+          all.findIndex(
+            (x) => x.localeCompare(t, "fr", { sensitivity: "base" }) === 0,
+          ) === i,
+      );
+  }
   commit();
   return publicUser(user);
 }
@@ -1816,7 +2218,10 @@ function codPayload(): CodPayload {
 function settleCod(actor: Actor, dto: Record<string, unknown>) {
   const ids = Array.isArray(dto.parcelIds) ? dto.parcelIds.map(Number) : [];
   let settled = 0;
+  let amount = 0;
+  let livreurId: number | null = null;
   const at = nowIso();
+  const settledIds: number[] = [];
   for (const parcel of db().parcels) {
     if (!ids.includes(parcel.id) || !DELIVERED.includes(parcel.status) || parcel.codSettledAt) {
       continue;
@@ -1824,9 +2229,327 @@ function settleCod(actor: Actor, dto: Record<string, unknown>) {
     parcel.codSettledAt = at;
     pushEvent(parcel, "Montant COD encaissé", { actor });
     settled += 1;
+    amount += parcel.price;
+    settledIds.push(parcel.id);
+    if (!livreurId && parcel.driverId) livreurId = parcel.driverId;
+  }
+  if (amount > 0) {
+    const cod = db().cashRegisters.find((r) => r.kind === "COD" && r.agencyId == null);
+    if (cod) {
+      cod.balance = round3(cod.balance + amount);
+      cod.updatedAt = at;
+      cod.movements.unshift({
+        id: nextId(cod.movements),
+        registerId: cod.id,
+        type: "IN",
+        amount: round3(amount),
+        label: `Encaissement COD · ${settled} colis`,
+        note: `Parcels: ${settledIds.join(", ")}`,
+        actorId: actor.id,
+        parcelId: settledIds[0] ?? null,
+        livreurId,
+        createdAt: at,
+      });
+    }
   }
   commit();
-  return { settled };
+  return { settled, amount: round3(amount) };
+}
+
+function listCashRegisters(actor: Actor) {
+  const network =
+    actor.role === "SUPER_ADMIN" ||
+    actor.role === "ADMIN" ||
+    actor.role === "EXPERT_COMPTABLE";
+  return db()
+    .cashRegisters.filter((r) => {
+      if (!r.isActive) return false;
+      if (network) return true;
+      if (r.kind === "COD") return true;
+      return !!actor.agencyId && r.agencyId === actor.agencyId;
+    })
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      agencyId: r.agencyId,
+      agency: r.agencyId
+        ? db().agencies.find((a) => a.id === r.agencyId) ?? null
+        : null,
+      balance: r.balance,
+      isActive: r.isActive,
+      updatedAt: r.updatedAt,
+    }));
+}
+
+function getCashRegister(actor: Actor, id: number) {
+  const register = db().cashRegisters.find((r) => r.id === id);
+  if (!register) throw new MockHttpError(404, "Caisse introuvable");
+  const network =
+    actor.role === "SUPER_ADMIN" ||
+    actor.role === "ADMIN" ||
+    actor.role === "EXPERT_COMPTABLE";
+  if (
+    !network &&
+    register.kind === "DEPENSE" &&
+    register.agencyId !== actor.agencyId
+  ) {
+    throw new MockHttpError(403, "Caisse hors de votre périmètre");
+  }
+  return {
+    id: register.id,
+    kind: register.kind,
+    name: register.name,
+    agencyId: register.agencyId,
+    agency: register.agencyId
+      ? db().agencies.find((a) => a.id === register.agencyId) ?? null
+      : null,
+    balance: register.balance,
+    movements: register.movements.slice(0, 80).map((m) => ({
+      id: m.id,
+      type: m.type,
+      amount: m.amount,
+      label: m.label,
+      note: m.note,
+      receiptUrl: m.receiptUrl ?? null,
+      invoiceRef: m.invoiceRef ?? null,
+      actor: m.actorId
+        ? (() => {
+            const u = db().users.find((x) => x.id === m.actorId);
+            return u ? { id: u.id, name: u.name } : null;
+          })()
+        : null,
+      parcelId: m.parcelId,
+      livreurId: m.livreurId,
+      createdAt: m.createdAt,
+    })),
+  };
+}
+
+function addCashMovement(
+  actor: Actor,
+  registerId: number,
+  dto: Record<string, unknown>,
+) {
+  const register = db().cashRegisters.find((r) => r.id === registerId);
+  if (!register?.isActive) throw new MockHttpError(404, "Caisse introuvable");
+  const network =
+    actor.role === "SUPER_ADMIN" ||
+    actor.role === "ADMIN" ||
+    actor.role === "EXPERT_COMPTABLE";
+  if (
+    !network &&
+    register.kind === "DEPENSE" &&
+    register.agencyId !== actor.agencyId
+  ) {
+    throw new MockHttpError(403, "Caisse hors de votre périmètre");
+  }
+  const type = dto.type === "IN" ? "IN" : "OUT";
+  const amount = num(dto.amount);
+  if (amount === undefined || amount <= 0) {
+    throw new MockHttpError(400, "Montant invalide");
+  }
+  const label = str(dto.label)?.trim() ?? "";
+  if (label.length < 2) throw new MockHttpError(400, "Libellé requis");
+  if (register.kind === "COD" && type === "OUT" && !network) {
+    throw new MockHttpError(403, "Seul l’expert comptable peut sortir de la COD");
+  }
+  const delta = type === "IN" ? amount : -amount;
+  const next = round3(register.balance + delta);
+  if (next < -0.0005) throw new MockHttpError(400, "Solde insuffisant");
+  register.balance = next;
+  register.updatedAt = nowIso();
+  const invoiceRef = str(dto.invoiceRef)?.trim() || null;
+  if (invoiceRef && (register.kind !== "DEPENSE" || type !== "OUT")) {
+    throw new MockHttpError(400, "Facture expert = sortie caisse dépense");
+  }
+  if (
+    invoiceRef &&
+    actor.role !== "EXPERT_COMPTABLE" &&
+    actor.role !== "SUPER_ADMIN" &&
+    actor.role !== "ADMIN"
+  ) {
+    throw new MockHttpError(403, "Seul l’expert peut enregistrer une facture");
+  }
+  const movement: MockCashMovement = {
+    id: nextId(register.movements),
+    registerId: register.id,
+    type,
+    amount: round3(amount),
+    label: invoiceRef ? `Facture ${invoiceRef} — ${label}` : label,
+    note: str(dto.note) ?? null,
+    receiptUrl: str(dto.receiptUrl)?.trim() || null,
+    invoiceRef,
+    actorId: actor.id,
+    parcelId: null,
+    livreurId: num(dto.livreurId) ?? null,
+    createdAt: nowIso(),
+  };
+  register.movements.unshift(movement);
+  commit();
+  return { id: movement.id, balance: register.balance, type, amount: movement.amount };
+}
+
+function toDepositView(d: MockLivreurDeposit) {
+  const livreur = db().users.find((u) => u.id === d.livreurId);
+  const agency = d.agencyId
+    ? db().agencies.find((a) => a.id === d.agencyId) ?? null
+    : null;
+  return {
+    id: d.id,
+    livreurId: d.livreurId,
+    livreur: livreur
+      ? { id: livreur.id, name: livreur.name, email: livreur.email }
+      : null,
+    agencyId: d.agencyId,
+    agency,
+    amount: d.amount,
+    expectedAmount: d.expectedAmount,
+    receiptUrl: d.receiptUrl,
+    status: d.status,
+    runsheetParcelIds: d.runsheetParcelIds,
+    parcelCount: d.runsheetParcelIds.length,
+    rejectReason: d.rejectReason,
+    reviewedBy: d.reviewedById
+      ? (() => {
+          const u = db().users.find((x) => x.id === d.reviewedById);
+          return u ? { id: u.id, name: u.name } : null;
+        })()
+      : null,
+    reviewedAt: d.reviewedAt,
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+    balanceCleared: Math.abs(d.amount - d.expectedAmount) < 0.0005,
+  };
+}
+
+function openCodFor(actor: Actor) {
+  const items = db()
+    .parcels.filter(
+      (p) =>
+        DELIVERED.includes(p.status) &&
+        !p.codSettledAt &&
+        (actor.role === "LIVREUR" ? p.driverId === actor.id : true),
+    )
+    .map((p) => ({
+      id: p.id,
+      code: p.code,
+      recipientName: p.recipientName,
+      city: p.city,
+      price: p.price,
+      driverId: p.driverId,
+      agencyId: p.agencyId ?? null,
+      status: p.status,
+    }));
+  const expectedAmount = round3(items.reduce((s, p) => s + p.price, 0));
+  return { items, expectedAmount, openCount: items.length };
+}
+
+function createLivreurDeposit(actor: Actor, dto: Record<string, unknown>) {
+  if (actor.role !== "LIVREUR") throw new MockHttpError(403, "Livreur uniquement");
+  const open = openCodFor(actor).items;
+  if (open.length === 0) throw new MockHttpError(400, "Aucun COD ouvert à verser");
+  const parcelIds = Array.isArray(dto.parcelIds)
+    ? Array.from(new Set(dto.parcelIds.map(Number))).sort((a, b) => a - b)
+    : [];
+  const openIds = open.map((p) => p.id).sort((a, b) => a - b);
+  if (
+    parcelIds.length !== openIds.length ||
+    parcelIds.some((id, i) => id !== openIds[i])
+  ) {
+    throw new MockHttpError(400, "Versement doit couvrir tout le float (manque non)");
+  }
+  if (db().livreurDeposits.some((d) => d.livreurId === actor.id && d.status === "PENDING")) {
+    throw new MockHttpError(400, "Versement déjà en attente");
+  }
+  const expectedAmount = round3(open.reduce((s, p) => s + p.price, 0));
+  const amount = round3(num(dto.amount) ?? 0);
+  if (Math.abs(amount - expectedAmount) > 0.0005) {
+    throw new MockHttpError(400, `Manque non : attendu ${expectedAmount} TND`);
+  }
+  const receiptUrl = str(dto.receiptUrl)?.trim();
+  if (!receiptUrl) throw new MockHttpError(400, "Reçu obligatoire");
+  const at = nowIso();
+  const deposit: MockLivreurDeposit = {
+    id: nextId(db().livreurDeposits),
+    livreurId: actor.id,
+    agencyId: actor.agencyId ?? open.find((p) => p.agencyId)?.agencyId ?? null,
+    amount,
+    expectedAmount,
+    receiptUrl,
+    status: "PENDING",
+    runsheetParcelIds: parcelIds,
+    rejectReason: null,
+    reviewedById: null,
+    reviewedAt: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  db().livreurDeposits.unshift(deposit);
+  commit();
+  return toDepositView(deposit);
+}
+
+function listLivreurDeposits(actor: Actor, status?: string) {
+  let rows = db().livreurDeposits;
+  if (actor.role === "LIVREUR") rows = rows.filter((d) => d.livreurId === actor.id);
+  if (status) rows = rows.filter((d) => d.status === status);
+  return rows.map(toDepositView);
+}
+
+function acceptLivreurDeposit(actor: Actor, id: number) {
+  const deposit = db().livreurDeposits.find((d) => d.id === id);
+  if (!deposit) throw new MockHttpError(404, "Versement introuvable");
+  if (deposit.status !== "PENDING") throw new MockHttpError(400, "Déjà traité");
+  const parcels = db().parcels.filter(
+    (p) =>
+      deposit.runsheetParcelIds.includes(p.id) &&
+      p.driverId === deposit.livreurId &&
+      DELIVERED.includes(p.status) &&
+      !p.codSettledAt,
+  );
+  if (parcels.length !== deposit.runsheetParcelIds.length) {
+    throw new MockHttpError(400, "Runsheet incomplet (manque non)");
+  }
+  const remaining = db().parcels.filter(
+    (p) =>
+      p.driverId === deposit.livreurId &&
+      DELIVERED.includes(p.status) &&
+      !p.codSettledAt &&
+      !deposit.runsheetParcelIds.includes(p.id),
+  );
+  if (remaining.length > 0) {
+    throw new MockHttpError(400, `Float non à zéro : ${remaining.length} colis`);
+  }
+  const at = nowIso();
+  deposit.status = "ACCEPTED";
+  deposit.reviewedById = actor.id;
+  deposit.reviewedAt = at;
+  deposit.updatedAt = at;
+  settleCod(actor, { parcelIds: deposit.runsheetParcelIds });
+  for (const p of parcels) {
+    pushEvent(p, "Versement COD validé (solde zéro)", { actor });
+  }
+  const mov = db().cashRegisters.find((r) => r.kind === "COD")?.movements[0];
+  if (mov) {
+    mov.receiptUrl = deposit.receiptUrl;
+    mov.depositId = deposit.id;
+  }
+  commit();
+  return toDepositView(deposit);
+}
+
+function rejectLivreurDeposit(actor: Actor, id: number, dto: Record<string, unknown>) {
+  const deposit = db().livreurDeposits.find((d) => d.id === id);
+  if (!deposit) throw new MockHttpError(404, "Versement introuvable");
+  if (deposit.status !== "PENDING") throw new MockHttpError(400, "Déjà traité");
+  deposit.status = "REJECTED";
+  deposit.reviewedById = actor.id;
+  deposit.reviewedAt = nowIso();
+  deposit.rejectReason = str(dto.reason) ?? "Rejeté";
+  deposit.updatedAt = nowIso();
+  commit();
+  return toDepositView(deposit);
 }
 
 function notificationsFor(actor: Actor): AppNotification[] {
@@ -1966,40 +2689,30 @@ export function mockSignUp(dto: Record<string, unknown>) {
   if (db().users.some((u) => u.email.toLowerCase() === email)) {
     throw new MockHttpError(409, "Email déjà utilisé");
   }
-  if (dto.role !== "EXPEDITEUR" && dto.role !== "LIVREUR") {
-    throw new MockHttpError(400, "Inscription publique : Expéditeur ou Livreur uniquement");
+  if (dto.role != null && dto.role !== "EXPEDITEUR") {
+    throw new MockHttpError(400, "Inscription publique : Expéditeur uniquement");
   }
-  const role: AppRole = dto.role;
 
-  let productTypes: string[] = [];
+  const raw = Array.isArray(dto.productTypes) ? dto.productTypes : [];
+  const productTypes = raw.map((t) => String(t).trim()).filter(Boolean);
+  if (productTypes.length === 0) {
+    throw new MockHttpError(400, "Choisissez au moins un type de produit");
+  }
   let productNotes: string | null = null;
-  let shopName: string | null = null;
-  if (role === "EXPEDITEUR") {
-    const raw = Array.isArray(dto.productTypes) ? dto.productTypes : [];
-    productTypes = raw.map((t) => String(t).trim()).filter(Boolean);
-    if (productTypes.length === 0) {
-      throw new MockHttpError(400, "Choisissez au moins un type de produit");
-    }
-    if (productTypes.includes("Autre")) {
-      const notes = str(dto.productNotes) ?? "";
-      if (notes.length < 2) throw new MockHttpError(400, "Précisez le type de produit");
-      productNotes = notes;
-    } else {
-      productNotes = str(dto.productNotes) || null;
-    }
-    shopName = str(dto.shopName) || name;
+  if (productTypes.includes("Autre")) {
+    const notes = str(dto.productNotes) ?? "";
+    if (notes.length < 2) throw new MockHttpError(400, "Précisez le type de produit");
+    productNotes = notes;
+  } else {
+    productNotes = str(dto.productNotes) || null;
   }
-
-  let zoneId: number | null = null;
-  if (role === "LIVREUR") {
-    zoneId = ensureZoneForGovernorate(governorate);
-  }
+  const shopName = str(dto.shopName) || name;
 
   const user: MockUser = {
     id: nextId(db().users),
     name,
     email,
-    role,
+    role: "EXPEDITEUR",
     phone,
     password,
     isActive: true,
@@ -2010,7 +2723,6 @@ export function mockSignUp(dto: Record<string, unknown>) {
     shopName,
     productTypes,
     productNotes,
-    zoneId,
     createdAt: nowIso(),
   };
   db().users.push(user);
@@ -2034,7 +2746,56 @@ export function mockRefresh(refreshToken: string): AuthSession {
   const id = Number(refreshToken.replace("mock-refresh-", ""));
   const user = db().users.find((u) => u.id === id && u.isActive);
   if (!user) throw new MockHttpError(401, "Session expirée");
+  if ((user.approvalStatus ?? "APPROVED") !== "APPROVED") {
+    throw new MockHttpError(401, "Session expirée");
+  }
   return sessionFor(user);
+}
+
+function mockForgotPassword(dto: Record<string, unknown>) {
+  const email = str(dto.email)?.toLowerCase();
+  const generic = {
+    ok: true as const,
+    message:
+      "Si un compte existe pour cet email, un lien de réinitialisation a été préparé.",
+  };
+  if (!email) return generic;
+  const user = db().users.find((u) => u.email.toLowerCase() === email && u.isActive);
+  if (!user) return generic;
+  const rawToken = `mock-reset-${user.id}-${Date.now().toString(36)}`;
+  user.passwordResetToken = rawToken;
+  user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  commit();
+  return { ...generic, resetToken: rawToken };
+}
+
+function mockResetPassword(dto: Record<string, unknown>) {
+  const token = str(dto.token);
+  const password = typeof dto.password === "string" ? dto.password : "";
+  if (!token) {
+    throw new MockHttpError(400, "Lien de réinitialisation invalide ou expiré");
+  }
+  if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) {
+    throw new MockHttpError(400, "Mot de passe : au moins une lettre et un chiffre");
+  }
+  const user = db().users.find(
+    (u) =>
+      u.passwordResetToken === token &&
+      u.isActive &&
+      u.passwordResetExpires &&
+      new Date(u.passwordResetExpires).getTime() > Date.now(),
+  );
+  if (!user) {
+    throw new MockHttpError(400, "Lien de réinitialisation invalide ou expiré");
+  }
+  user.password = password;
+  user.passwordResetToken = null;
+  user.passwordResetExpires = null;
+  commit();
+  return {
+    ok: true as const,
+    message: "Mot de passe mis à jour — vous pouvez vous connecter.",
+  };
 }
 
 type Route = {
@@ -2048,6 +2809,7 @@ const SENDERS: AppRole[] = ["SUPER_ADMIN", "ADMIN", "CHEF_AGENCE", "EXPEDITEUR"]
 const ALL: AppRole[] = [
   "SUPER_ADMIN",
   "ADMIN",
+  "EXPERT_COMPTABLE",
   "CHEF_AGENCE",
   "SUPPORT",
   "PICKUP",
@@ -2494,11 +3256,34 @@ const ROUTES: Route[] = [
         senderId: actor.id,
         status: "OPEN",
         parcelIds: parcels.map((p) => p.id),
+        destinationLabel: str(body.destinationLabel)?.trim() || null,
+        destinationAgencyId: num(body.destinationAgencyId) ?? null,
         closedAt: null,
         createdAt: at,
         updatedAt: at,
       };
       db().returnLots.push(lot);
+      commit();
+      return summarizeReturnLot(lot);
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/return-lots\/(\d+)\/destination$/,
+    roles: ["EXPEDITEUR", "SUPER_ADMIN", "ADMIN", "CHEF_AGENCE", "MAGASINIER"],
+    handler: ({ actor, params, body }) => {
+      const lot = db().returnLots.find((l) => l.id === Number(params[0]));
+      if (!lot) throw new MockHttpError(404, "Lot introuvable");
+      if (actor.role === "EXPEDITEUR" && lot.senderId !== actor.id) {
+        throw new MockHttpError(403, "Accès refusé");
+      }
+      if (body.destinationLabel !== undefined) {
+        lot.destinationLabel = str(body.destinationLabel)?.trim() || null;
+      }
+      if (body.destinationAgencyId !== undefined) {
+        lot.destinationAgencyId = num(body.destinationAgencyId) ?? null;
+      }
+      lot.updatedAt = nowIso();
       commit();
       return summarizeReturnLot(lot);
     },
@@ -2653,6 +3438,8 @@ const ROUTES: Route[] = [
         createdById: actor.id,
         senderId,
         parcelIds: parcels.map((p) => p.id),
+        dechargeUrl: null,
+        cinUrl: null,
         closedAt: null,
         createdAt: at,
         updatedAt: at,
@@ -2660,6 +3447,35 @@ const ROUTES: Route[] = [
       db().pickupManifests.push(manifest);
       commit();
       return summarizePickupManifest(manifest);
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/pickup-manifests\/(\d+)\/close$/,
+    roles: [
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CHEF_AGENCE",
+      "MAGASINIER",
+      "PICKUP",
+    ],
+    handler: ({ actor, params, body }) => {
+      const m = db().pickupManifests.find((row) => row.id === Number(params[0]));
+      if (!m) throw new MockHttpError(404, "Manifeste introuvable");
+      if (!canReadPickupManifest(actor, m)) throw new MockHttpError(403, "Accès refusé");
+      if (m.status !== "OPEN") throw new MockHttpError(400, "Manifeste déjà clôturé");
+      const dechargeUrl = str(body.dechargeUrl)?.trim();
+      const cinUrl = str(body.cinUrl)?.trim();
+      if (!dechargeUrl || !cinUrl) {
+        throw new MockHttpError(400, "Décharge et CIN obligatoires");
+      }
+      m.status = "CLOSED";
+      m.closedAt = nowIso();
+      m.dechargeUrl = dechargeUrl;
+      m.cinUrl = cinUrl;
+      m.updatedAt = nowIso();
+      commit();
+      return summarizePickupManifest(m);
     },
   },
   {
@@ -3486,6 +4302,86 @@ const ROUTES: Route[] = [
   },
   {
     method: "GET",
+    pattern: /^\/cash\/registers$/,
+    roles: MONEY_STAFF,
+    handler: ({ actor }) => listCashRegisters(actor),
+  },
+  {
+    method: "POST",
+    pattern: /^\/cash\/registers\/ensure$/,
+    roles: MONEY_STAFF,
+    handler: ({ actor }) => listCashRegisters(actor),
+  },
+  {
+    method: "GET",
+    pattern: /^\/cash\/registers\/(\d+)$/,
+    roles: MONEY_STAFF,
+    handler: ({ actor, params }) => getCashRegister(actor, Number(params[0])),
+  },
+  {
+    method: "POST",
+    pattern: /^\/cash\/registers\/(\d+)\/movements$/,
+    roles: MONEY_STAFF,
+    handler: ({ actor, params, body }) =>
+      addCashMovement(actor, Number(params[0]), body),
+  },
+  {
+    method: "GET",
+    pattern: /^\/cash\/deposits\/open-cod$/,
+    roles: [...MONEY_STAFF, "MAGASINIER", "LIVREUR"],
+    handler: ({ actor }) => openCodFor(actor),
+  },
+  {
+    method: "GET",
+    pattern: /^\/cash\/deposits$/,
+    roles: [...MONEY_STAFF, "MAGASINIER", "LIVREUR"],
+    handler: ({ actor, body }) =>
+      listLivreurDeposits(actor, str(body.status) ?? undefined),
+  },
+  {
+    method: "POST",
+    pattern: /^\/cash\/deposits$/,
+    roles: ["LIVREUR"],
+    handler: ({ actor, body }) => createLivreurDeposit(actor, body),
+  },
+  {
+    method: "POST",
+    pattern: /^\/cash\/deposits\/(\d+)\/accept$/,
+    roles: [...MONEY_STAFF, "MAGASINIER"],
+    handler: ({ actor, params }) => acceptLivreurDeposit(actor, Number(params[0])),
+  },
+  {
+    method: "POST",
+    pattern: /^\/cash\/deposits\/(\d+)\/reject$/,
+    roles: [...MONEY_STAFF, "MAGASINIER"],
+    handler: ({ actor, params, body }) =>
+      rejectLivreurDeposit(actor, Number(params[0]), body),
+  },
+  {
+    method: "POST",
+    pattern: /^\/uploads$/,
+    handler: ({ body }) => {
+      const kind = str(body.kind) || "other";
+      const sampleByKind: Record<string, string> = {
+        receipt: mockDocUrl("receipt"),
+        facture: mockDocUrl("facture"),
+        decharge: mockDocUrl("decharge"),
+        cin: mockDocUrl("cin"),
+      };
+      return {
+        url: sampleByKind[kind] ?? `/mock-docs/bordereau-colis.pdf`,
+        kind,
+      };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/payments\/expert-batch$/,
+    roles: ["EXPERT_COMPTABLE", "SUPER_ADMIN", "ADMIN"],
+    handler: () => ({ paidCount: 0, paymentIds: [] as number[] }),
+  },
+  {
+    method: "GET",
     pattern: /^\/notifications$/,
     handler: ({ actor }) => notificationsFor(actor),
   },
@@ -3526,11 +4422,10 @@ export function mockHandle(
   }
   if (method === "POST" && clean === "/auth/logout") return undefined;
   if (method === "POST" && clean === "/auth/forgot-password") {
-    return {
-      ok: true,
-      message:
-        "Si un compte existe pour cet email, un lien de réinitialisation sera envoyé lorsque l’envoi d’emails sera configuré.",
-    };
+    return mockForgotPassword(payload);
+  }
+  if (method === "POST" && clean === "/auth/reset-password") {
+    return mockResetPassword(payload);
   }
   if (method === "POST" && clean === "/public/contact") {
     return {

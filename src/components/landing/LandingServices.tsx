@@ -1,8 +1,11 @@
 "use client";
 
 import { SERVICES } from "@/components/landing/landing-data";
+import { useT } from "@/i18n/locale-context";
 
 export function LandingServices() {
+  const t = useT();
+
   return (
     <section
       id="services"
@@ -19,20 +22,19 @@ export function LandingServices() {
       />
 
       <div className="relative mx-auto w-full max-w-6xl">
-        <header className="mx-auto w-full max-w-xl text-center lg:mx-0 lg:text-left">
+        <header className="mx-auto w-full max-w-xl text-center lg:mx-0 lg:text-start">
           <p className="reveal text-[10px] font-semibold uppercase tracking-[0.24em] text-[#991211]/75 sm:text-[11px]">
-            / Services
+            {t("landing.servicesEyebrow")}
           </p>
           <h2 className="reveal mt-1 font-display text-[clamp(1.55rem,3.6vw,2.35rem)] font-semibold leading-[1.08] tracking-[-0.035em] text-black sm:mt-1.5">
-            Tout le last-mile,
-            <span className="mt-0.5 block text-[#991211]">une seule console</span>
+            {t("landing.servicesTitle")}
           </h2>
           <p className="reveal mx-auto mt-1.5 max-w-md text-[13px] leading-snug text-black/55 sm:text-[14px] lg:mx-0">
-            Du pickup au versement COD — le même pipeline pour votre boutique.
+            {t("landing.servicesLead")}
           </p>
         </header>
 
-        <ul className="services-list mt-5 grid grid-cols-1 gap-x-8 border-t border-black/[0.08] text-center sm:mt-6 sm:grid-cols-2 sm:text-left lg:grid-cols-3">
+        <ul className="services-list mt-5 grid grid-cols-1 gap-x-8 border-t border-black/[0.08] text-center sm:mt-6 sm:grid-cols-2 sm:text-start lg:grid-cols-3">
           {SERVICES.map((service) => (
             <li
               key={service.n}
@@ -42,10 +44,10 @@ export function LandingServices() {
                 {service.n}
               </span>
               <h3 className="mt-1 font-display text-[15px] font-semibold tracking-tight text-black sm:text-[16px]">
-                {service.title}
+                {t(service.titleKey)}
               </h3>
               <p className="mt-0.5 text-[12px] leading-snug text-black/50 sm:text-[13px]">
-                {service.body}
+                {t(service.bodyKey)}
               </p>
             </li>
           ))}

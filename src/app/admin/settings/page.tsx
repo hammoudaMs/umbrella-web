@@ -1,7 +1,9 @@
 "use client";
 
 import { SettingsForm } from "@/components/SettingsForm";
+import { useT } from "@/i18n/locale-context";
 
 export default function AdminSettingsPage() {
-  return <SettingsForm description="Compte administrateur" />;
+  const t = useT();
+  return <SettingsForm description={t("settings.descAdmin")} />;
 }

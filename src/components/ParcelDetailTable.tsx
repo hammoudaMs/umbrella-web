@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
+  ChevronRight,
   FileSpreadsheet,
   FileText,
   Package,
@@ -194,10 +195,6 @@ export function ParcelDetailTable({
   }
 
   function printBordereau(row: Parcel) {
-    if (row.bordereauUrl && !row.bordereauUrl.includes("example.com")) {
-      window.open(row.bordereauUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
     try {
       openBordereauPdf(row, { includeMode: showModes });
     } catch (err) {
@@ -211,51 +208,52 @@ export function ParcelDetailTable({
   const colSpan = showPartyDetails ? 8 : 7;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-ops-card bg-ops-surface">
-      <div className="flex flex-col gap-3 border-b border-ops-card px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={FileSpreadsheet}
-            onClick={exportExcel}
-          >
-            Excel
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={FileText}
-            onClick={exportPdf}
-          >
-            PDF
-          </Button>
-          <button
-            type="button"
-            onClick={() => setGroupByZone((v) => !v)}
-            className={cn(
-              "rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition",
-              groupByZone
-                ? "border-ops-accent/40 bg-ops-accent/10 text-ops-accent"
-                : "border-ops-card text-ops-ink/50 hover:text-ops-ink",
-            )}
-          >
-            Grouper par zone
-          </button>
-        </div>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
         <SearchInput
           value={query}
           onChange={(value) => {
             setQuery(value);
             setPage(1);
           }}
-          placeholder="Rechercher…"
-          className="w-full lg:w-64"
+          placeholder="Rechercher code, destinataire, ville…"
+          className="min-w-0 flex-1"
         />
+        <div className="flex shrink-0 items-center gap-1">
+          <ToolbarIconBtn label="Excel" onClick={exportExcel}>
+            <FileSpreadsheet className="h-4 w-4" />
+          </ToolbarIconBtn>
+          <ToolbarIconBtn label="PDF" onClick={exportPdf}>
+            <FileText className="h-4 w-4" />
+          </ToolbarIconBtn>
+          <button
+            type="button"
+            onClick={() => setGroupByZone((v) => !v)}
+            className={cn(
+              "rounded-xl border px-2.5 py-2 text-[11px] font-semibold transition",
+              groupByZone
+                ? "border-ops-accent/40 bg-ops-accent/10 text-ops-accent"
+                : "border-ops-card text-ops-ink/45 hover:text-ops-ink",
+            )}
+          >
+            Zones
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <div className="space-y-2 p-4">
+        <div className="space-y-3 md:hidden">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-24 animate-pulse rounded-2xl bg-ops-ink/[0.06]"
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="hidden space-y-2 rounded-2xl border border-ops-card bg-ops-surface p-4 md:block">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
@@ -264,7 +262,7 @@ export function ParcelDetailTable({
           ))}
         </div>
       ) : pageRows.length === 0 ? (
-        <div className="p-10">
+        <div className="rounded-2xl border border-ops-card bg-ops-surface p-10">
           <EmptyState
             icon={Package}
             title={query ? "Aucun résultat" : "Aucun colis"}
@@ -277,97 +275,122 @@ export function ParcelDetailTable({
         </div>
       ) : (
         <>
-          <ul className="divide-y divide-ops-card md:hidden">
+          <ul className="space-y-3 md:hidden">
             {pageRows.map((row, index) => {
               const showZone =
                 groupByZone &&
                 (index === 0 ||
                   zoneKey(pageRows[index - 1]!) !== zoneKey(row));
-              const zoneCount = filtered.filter(
-                (r) => zoneKey(r) === zoneKey(row),
-              ).length;
               const editable =
                 onEdit && (canEditRow ? canEditRow(row) : true);
               const code = row.code ?? `#${row.id}`;
-              const body = (
-                <div className="flex items-start justify-between gap-3 px-4 py-3.5">
-                  <div className="min-w-0 flex-1">
-                    {detailBasePath ? (
-                      <Link
-                        href={`${detailBasePath}/${row.id}`}
-                        className="font-mono text-[13px] font-bold text-ops-ink hover:text-ops-accent"
-                      >
-                        {code}
-                      </Link>
-                    ) : (
-                      <p className="font-mono text-[13px] font-bold text-ops-ink">
-                        {code}
-                      </p>
-                    )}
-                    {showModes ? (
-                      <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-ops-ink/35">
-                        {row.mode === "INTERNAL" ? "Umbrella" : "Navex"}
-                      </p>
-                    ) : null}
-                    <p className="mt-1.5 text-[15px] font-semibold text-ops-ink">
-                      {row.recipientName}
-                    </p>
-                    <p className="mt-0.5 text-[12px] text-ops-ink/45">
-                      {row.city}
-                      {row.phone ? ` · ${row.phone}` : ""}
-                    </p>
-                    {showPartyDetails && row.sender?.name ? (
-                      <p className="mt-0.5 text-[11px] text-ops-ink/40">
-                        Exp. {row.sender.name}
-                      </p>
-                    ) : null}
-                    {row.driver?.name ? (
-                      <p className="mt-0.5 text-[11px] text-ops-ink/40">
-                        Livreur {row.driver.name}
-                      </p>
-                    ) : null}
-                    <p className="mt-2 text-[15px] font-extrabold tabular-nums text-ops-ink">
-                      {formatTnd(row.price)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    <QuietStatus status={row.status} />
-                    <div className="flex items-center gap-0.5">
-                      <IconBtn
-                        label="Bordereau"
-                        onClick={() => printBordereau(row)}
-                      >
-                        <Printer className="h-3.5 w-3.5" />
-                      </IconBtn>
-                      {onEdit ? (
-                        <IconBtn
-                          label="Modifier"
-                          disabled={!editable}
-                          onClick={() => onEdit(row)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </IconBtn>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
+              const href = detailBasePath
+                ? `${detailBasePath}/${row.id}`
+                : null;
+              const meta = STATUS_META[row.status as StatusKey];
+              const tone = meta?.color ?? "#64748b";
+              const metaBits = [
+                row.city,
+                row.phone || null,
+                showModes
+                  ? row.mode === "INTERNAL"
+                    ? "Umbrella"
+                    : "Navex"
+                  : null,
+              ].filter(Boolean);
               return (
-                <li key={row.id}>
+                <li key={row.id} className="space-y-2">
                   {showZone ? (
-                    <p className="bg-ops-page/70 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ops-ink/40">
+                    <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-ops-ink/35">
                       {zoneLabel(row)}
-                      <span className="ml-1.5 font-medium normal-case tracking-normal text-ops-ink/28">
-                        {zoneCount}
-                      </span>
                     </p>
                   ) : null}
-                  {body}
+                  <article className="relative overflow-hidden rounded-2xl border border-ops-card bg-ops-surface">
+                    <span
+                      className="absolute inset-y-0 left-0 w-[3px]"
+                      style={{ backgroundColor: tone }}
+                      aria-hidden
+                    />
+                    <div className="space-y-3 py-3.5 pe-3.5 ps-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          {href ? (
+                            <Link
+                              href={href}
+                              className="font-mono text-[11px] font-medium tracking-[0.04em] text-ops-ink/40 transition hover:text-ops-accent"
+                            >
+                              {code}
+                            </Link>
+                          ) : (
+                            <p className="font-mono text-[11px] font-medium tracking-[0.04em] text-ops-ink/40">
+                              {code}
+                            </p>
+                          )}
+                          <p className="mt-1 truncate text-[15px] font-semibold leading-snug text-ops-ink">
+                            {row.recipientName}
+                          </p>
+                        </div>
+                        <p className="shrink-0 pt-0.5 font-display text-[15px] font-bold tabular-nums tracking-tight text-ops-ink">
+                          {formatTnd(row.price)}
+                        </p>
+                      </div>
+
+                      <p className="truncate text-[12px] leading-relaxed text-ops-ink/45">
+                        {metaBits.join(" · ")}
+                      </p>
+
+                      {showPartyDetails && row.sender?.name ? (
+                        <p className="text-[11px] text-ops-ink/35">
+                          Exp. {row.sender.name}
+                          {row.driver?.name ? ` · Livreur ${row.driver.name}` : ""}
+                        </p>
+                      ) : row.driver?.name ? (
+                        <p className="text-[11px] text-ops-ink/35">
+                          Livreur {row.driver.name}
+                        </p>
+                      ) : null}
+
+                      <p
+                        className="truncate text-[12px] font-semibold"
+                        style={{ color: tone }}
+                      >
+                        {meta?.label ?? row.status}
+                      </p>
+
+                      <div className="flex items-center gap-2 border-t border-ops-card/80 pt-3">
+                        <ActionBtn
+                          label="Bordereau"
+                          onClick={() => printBordereau(row)}
+                        >
+                          <Printer className="h-5 w-5" strokeWidth={2.25} />
+                        </ActionBtn>
+                        {onEdit ? (
+                          <ActionBtn
+                            label="Modifier"
+                            disabled={!editable}
+                            onClick={() => onEdit(row)}
+                          >
+                            <Pencil className="h-5 w-5" strokeWidth={2.25} />
+                          </ActionBtn>
+                        ) : null}
+                        {href ? (
+                          <Link
+                            href={href}
+                            className="ms-auto inline-flex h-11 items-center gap-1 rounded-xl bg-ops-accent px-3.5 text-[13px] font-semibold text-white transition hover:brightness-110"
+                          >
+                            Détail
+                            <ChevronRight className="h-4 w-4" aria-hidden />
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
                 </li>
               );
             })}
           </ul>
-          <div className="hidden overflow-x-auto md:block">
+          <div className="hidden overflow-hidden rounded-2xl border border-ops-card bg-ops-surface md:block">
+          <div className="overflow-x-auto">
             <table className={tableClass}>
               <thead className={theadClass}>
                 <tr>
@@ -542,11 +565,12 @@ export function ParcelDetailTable({
               </tbody>
             </table>
           </div>
+          </div>
         </>
       )}
 
       {!loading && filtered.length > 0 ? (
-        <div className="flex flex-col gap-3 border-t border-ops-card px-4 py-3 text-[12px] text-ops-ink/45 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl border border-ops-card bg-ops-surface px-4 py-3 text-[12px] text-ops-ink/45 sm:flex-row sm:items-center sm:justify-between">
           <p>
             {firstIndex}–{lastIndex} / {filtered.length}
           </p>
@@ -573,7 +597,32 @@ export function ParcelDetailTable({
           </div>
         </div>
       ) : null}
-    </section>
+    </div>
+  );
+}
+
+function ActionBtn({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-3 text-ops-ink/70 transition hover:border-ops-ink/20 hover:text-ops-ink disabled:cursor-not-allowed disabled:opacity-35"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -596,6 +645,28 @@ function IconBtn({
       disabled={disabled}
       onClick={onClick}
       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ops-ink/35 transition hover:bg-ops-ink/[0.06] hover:text-ops-ink disabled:cursor-not-allowed disabled:opacity-30"
+    >
+      {children}
+    </button>
+  );
+}
+
+function ToolbarIconBtn({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-ops-card text-ops-ink/45 transition hover:border-ops-ink/15 hover:text-ops-ink"
     >
       {children}
     </button>

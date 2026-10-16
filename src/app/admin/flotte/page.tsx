@@ -18,12 +18,14 @@ import { useAuth } from "@/lib/auth-context";
 import type { Driver, Parcel } from "@/lib/domain";
 import { PORTAL_BY_ROLE } from "@/lib/roles";
 import { useApiQuery } from "@/lib/use-api";
+import { useT } from "@/i18n/locale-context";
 
 const ACTIVE = ["A_ENLEVER", "ENLEVES", "AU_DEPOT", "EN_COURS", "A_VERIFIER"];
 const DELIVERED = ["LIVRES", "LIVRES_PAYES"];
 const DAILY_CAPACITY = 8;
 
 export default function FlottePage() {
+  const t = useT();
   const { session } = useAuth();
   const base = session ? PORTAL_BY_ROLE[session.user.role] : "/admin";
   const drivers = useApiQuery<Driver[]>("/users/livreurs");
@@ -51,8 +53,8 @@ export default function FlottePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Flotte livreurs"
-        description="Charge de travail et affectations en temps réel"
+        title={t("misc.fleet.title")}
+        description={t("misc.fleet.description")}
         actions={
           <Link href={`${base}/dispatch`} className={buttonClass("primary")}>
             <Truck className="h-4 w-4" aria-hidden />

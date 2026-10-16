@@ -54,6 +54,7 @@ import {
   canSwitchDeliveryMode,
   type AppRole,
 } from "@/lib/roles";
+import { useStatusLabel } from "@/i18n/hooks";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import { useAuth } from "@/lib/auth-context";
 import { useApi, useApiQuery } from "@/lib/use-api";
@@ -154,6 +155,7 @@ export function ParcelDetailView({
   portalBase: string;
 }) {
   const { session } = useAuth();
+  const statusLabelFn = useStatusLabel();
   const role = session?.user.role;
   const showModes = canSeeDeliveryMode(role);
   const showOps = roleCanSeeOps(role);
@@ -229,7 +231,6 @@ export function ParcelDetailView({
   const lastActor = lastTimelineActor(parcel.timeline);
   const slot = DELIVERY_WINDOWS.find((w) => w.id === parcel.deliveryWindow);
   const hasGps = parcel.lat != null && parcel.lng != null;
-  const statusMeta = STATUS_META[parcel.status as StatusKey];
   const messagePeerId =
     role === "LIVREUR"
       ? (parcel.recipientUserId ?? null)
@@ -262,7 +263,7 @@ export function ParcelDetailView({
     <div className="space-y-6">
       <PageHeader
         eyebrow="Colis"
-        title={parcel.code ?? `#${parcel.id}`}
+        title={`\u200E${parcel.code ?? `#${parcel.id}`}`}
         description={`${parcel.recipientName} · ${parcel.city}, ${parcel.governorate}`}
         actions={
           <>
@@ -329,7 +330,7 @@ export function ParcelDetailView({
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <OpsCard
               label="Statut"
-              value={statusMeta?.label ?? parcel.status}
+              value={statusLabelFn(parcel.status)}
               hint={parcel.updatedAt ? `Maj ${formatWhen(parcel.updatedAt)}` : undefined}
               tone="accent"
             />
@@ -629,7 +630,7 @@ export function ParcelDetailView({
                             color: meta.ink ?? "#fff",
                           }}
                         >
-                          {meta.label}
+                          {statusLabelFn(ev.status!)}
                         </span>
                       ) : null}
                     </div>

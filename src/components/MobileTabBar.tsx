@@ -11,6 +11,8 @@ import {
   portalMobilePrimary,
   type PortalNavDef,
 } from "@/lib/portal-nav-config";
+import { useOptionalPortalCreateParcel } from "@/lib/portal-create-parcel";
+import { useT } from "@/i18n/locale-context";
 
 function isTabActive(pathname: string, href: string, homeHref: string) {
   if (pathname === href) return true;
@@ -20,11 +22,17 @@ function isTabActive(pathname: string, href: string, homeHref: string) {
 
 export function MobileTabBar({ role }: { role: AppRole }) {
   const pathname = usePathname();
+  const t = useT();
+  const createParcel = useOptionalPortalCreateParcel();
   const primary = portalMobilePrimary(role);
   const more = portalMobileMore(role);
   const homeHref = primary[0]?.href ?? "";
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreActive = more.some((item) => isTabActive(pathname, item.href, homeHref));
+  const moreActive = more.some((item) =>
+    item.action === "create-parcel"
+      ? false
+      : isTabActive(pathname, item.href, homeHref),
+  );
   const cols = more.length > 0 ? primary.length + 1 : primary.length;
 
   useEffect(() => {
@@ -47,13 +55,13 @@ export function MobileTabBar({ role }: { role: AppRole }) {
           <button
             type="button"
             className="absolute inset-0 bg-black/55"
-            aria-label="Fermer le menu"
+            aria-label={t("common.close")}
             onClick={() => setMoreOpen(false)}
           />
           <div className="absolute inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] mx-auto w-full max-w-lg px-3">
             <div className="rounded-2xl border border-ops-card bg-ops-page p-2 shadow-ops">
               <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ops-ink/45">
-                Plus
+                {t("mobile.more")}
               </p>
               <ul className="grid grid-cols-2 gap-1">
                 {more.map((item) => (
@@ -62,6 +70,10 @@ export function MobileTabBar({ role }: { role: AppRole }) {
                     item={item}
                     active={isTabActive(pathname, item.href, homeHref)}
                     onNavigate={() => setMoreOpen(false)}
+                    onCreateParcel={() => {
+                      setMoreOpen(false);
+                      createParcel?.openCreateParcel();
+                    }}
                   />
                 ))}
               </ul>
@@ -71,7 +83,7 @@ export function MobileTabBar({ role }: { role: AppRole }) {
       ) : null}
 
       <nav
-        aria-label="Navigation mobile"
+        aria-label={t("landing.navAria")}
         className="fixed inset-x-0 bottom-0 z-50 border-t border-ops-ink/10 bg-ops-page/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
       >
         <ul
@@ -80,27 +92,43 @@ export function MobileTabBar({ role }: { role: AppRole }) {
         >
           {primary.map((tab) => {
             const Icon = tab.icon;
-            const active = isTabActive(pathname, tab.href, homeHref);
+            const isCreate = tab.action === "create-parcel";
+            const active = isCreate
+              ? Boolean(createParcel?.createOpen)
+              : isTabActive(pathname, tab.href, homeHref);
+            const className = cn(
+              "relative flex min-h-[3.75rem] w-full flex-col items-center justify-center gap-1 px-1 py-2.5 text-[11px] font-semibold tracking-wide transition",
+              active
+                ? "text-ops-accent"
+                : "text-ops-ink/55 hover:text-ops-ink/85",
+            );
+            const content = (
+              <>
+                <Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} />
+                <span className="truncate">{t(tab.labelKey)}</span>
+                {active ? (
+                  <span
+                    className="absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent"
+                    aria-hidden
+                  />
+                ) : null}
+              </>
+            );
             return (
               <li key={tab.href}>
-                <Link
-                  href={tab.href}
-                  className={cn(
-                    "relative flex min-h-[3.75rem] flex-col items-center justify-center gap-1 px-1 py-2.5 text-[11px] font-semibold tracking-wide transition",
-                    active
-                      ? "text-ops-accent"
-                      : "text-ops-ink/55 hover:text-ops-ink/85",
-                  )}
-                >
-                  <Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} />
-                  <span className="truncate">{tab.label}</span>
-                  {active ? (
-                    <span
-                      className="absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent"
-                      aria-hidden
-                    />
-                  ) : null}
-                </Link>
+                {isCreate ? (
+                  <button
+                    type="button"
+                    className={className}
+                    onClick={() => createParcel?.openCreateParcel()}
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <Link href={tab.href} className={className}>
+                    {content}
+                  </Link>
+                )}
               </li>
             );
           })}
@@ -120,7 +148,7 @@ export function MobileTabBar({ role }: { role: AppRole }) {
                   className="h-6 w-6"
                   strokeWidth={moreOpen || moreActive ? 2.4 : 2}
                 />
-                <span>Plus</span>
+                <span>{t("mobile.more")}</span>
                 {moreOpen || moreActive ? (
                   <span
                     className="absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent"
@@ -140,26 +168,36 @@ function MoreLink({
   item,
   active,
   onNavigate,
+  onCreateParcel,
 }: {
   item: PortalNavDef;
   active: boolean;
   onNavigate: () => void;
+  onCreateParcel: () => void;
 }) {
+  const t = useT();
   const Icon = item.icon;
+  const className = cn(
+    "flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold transition",
+    active
+      ? "bg-ops-accent/15 text-ops-accent"
+      : "text-ops-ink/80 hover:bg-ops-ink/[0.06]",
+  );
+  if (item.action === "create-parcel") {
+    return (
+      <li>
+        <button type="button" onClick={onCreateParcel} className={className}>
+          <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
+          <span className="truncate">{t(item.labelKey)}</span>
+        </button>
+      </li>
+    );
+  }
   return (
     <li>
-      <Link
-        href={item.href}
-        onClick={onNavigate}
-        className={cn(
-          "flex items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold transition",
-          active
-            ? "bg-ops-accent/15 text-ops-accent"
-            : "text-ops-ink/80 hover:bg-ops-ink/[0.06]",
-        )}
-      >
+      <Link href={item.href} onClick={onNavigate} className={className}>
         <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
-        <span className="truncate">{item.label}</span>
+        <span className="truncate">{t(item.labelKey)}</span>
       </Link>
     </li>
   );

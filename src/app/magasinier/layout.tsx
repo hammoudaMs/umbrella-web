@@ -1,21 +1,11 @@
 ﻿"use client";
 
-import { RequireRole } from "@/components/RequireRole";
-import { portalSidebarLinks } from "@/lib/portal-nav-config";
+import { TenantPortal } from "@/tenants/TenantPortal";
 
-export default function Layout({
+export default function MagasinierLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <RequireRole
-      roles={["MAGASINIER"]}
-      title={"Magasinier"}
-      subtitle={"Dépôt et retours"}
-      links={portalSidebarLinks("MAGASINIER")}
-    >
-      {children}
-    </RequireRole>
-  );
+  return <TenantPortal tenantId="magasinier">{children}</TenantPortal>;
 }

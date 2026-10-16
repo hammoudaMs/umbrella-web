@@ -1,5 +1,7 @@
 import type { StatusKey } from "@/lib/status-meta";
 
+export type CancelParty = "CLIENT" | "EXPEDITEUR";
+
 export type LivreurAction = {
   id: string;
   label: string;
@@ -8,9 +10,37 @@ export type LivreurAction = {
   tone: "primary" | "success" | "warn" | "danger" | "neutral";
   needsComment?: boolean;
   commentLabel?: string;
+  /** Prefixed into the saved comment (e.g. Client — motif). */
+  commentPrefix?: string;
+  /** Livraison annulée: force pick Client vs Expéditeur in the confirm modal. */
+  cancelPartyChoices?: Array<{ id: CancelParty; label: string }>;
   /** Reporté: date (+ time) picker instead of free text. */
   needsDatetime?: boolean;
 };
+
+export const CANCEL_PARTY_CHOICES: Array<{ id: CancelParty; label: string }> = [
+  { id: "CLIENT", label: "Client" },
+  { id: "EXPEDITEUR", label: "Expéditeur" },
+];
+
+export function cancelPartyLabel(party: CancelParty): string {
+  return party === "CLIENT" ? "Client" : "Expéditeur";
+}
+
+export function buildActionComment(
+  action: LivreurAction,
+  motif: string,
+  party?: CancelParty | null,
+): string {
+  const detail = motif.trim();
+  const who =
+    party != null
+      ? cancelPartyLabel(party)
+      : action.commentPrefix?.trim() || null;
+  if (who && detail) return `${who} — ${detail}`;
+  if (who) return who;
+  return detail;
+}
 
 /** Normalize Tunisian / international phone for tel:, sms:, wa.me */
 export function normalizePhoneDigits(phone: string): string {
@@ -117,7 +147,8 @@ export function livreurActionsFor(status: string): LivreurAction[] {
           status: "LIVRAISON_ANNULEE",
           tone: "danger",
           needsComment: true,
-          commentLabel: "Motif d’annulation",
+          commentLabel: "Motif (optionnel)",
+          cancelPartyChoices: CANCEL_PARTY_CHOICES,
         },
         {
           id: "unavailable",

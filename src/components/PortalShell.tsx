@@ -14,23 +14,34 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
+import {
+  CREATE_PARCEL_ROLES,
+  emitParcelCreated,
+  PortalCreateParcelProvider,
+  usePortalCreateParcel,
+} from "@/lib/portal-create-parcel";
 import { portalSidebarLinks } from "@/lib/portal-nav-config";
-import { PORTAL_BY_ROLE, ROLE_LABEL, type AppRole } from "@/lib/roles";
+import { type AppRole } from "@/lib/roles";
+import { PORTAL_BY_ROLE, tenantByRole } from "@/tenants/registry";
+import { useT } from "@/i18n/locale-context";
+import { LocaleToggle } from "@/components/LocaleToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationsMenu } from "@/components/NotificationsMenu";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { SupportBotWidget } from "@/components/SupportBotWidget";
 import { useConfirm, useToast } from "@/components/Feedback";
 import { Avatar } from "@/components/ui";
+import { CreateParcelWizard } from "@/components/CreateParcelWizard";
 
 export type PortalNavItem = {
   href: string;
-  label: string;
+  labelKey: string;
   icon: LucideIcon;
+  action?: "create-parcel";
 };
 
 export type PortalNavSection = {
-  title: string;
+  titleKey: string;
   items: PortalNavItem[];
 };
 
@@ -63,7 +74,9 @@ export function PortalShell({
   const { session, signOut, isMock, resetDemo } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
+  const t = useT();
   const portalPrefix = PORTAL_BY_ROLE[role];
+  const tenant = tenantByRole(role);
   const [accountOpen, setAccountOpen] = useState(false);
   const settingsHref = `${portalPrefix}/settings`;
 
@@ -82,21 +95,21 @@ export function PortalShell({
 
   async function onResetDemo() {
     const ok = await confirm({
-      title: "Réinitialiser la démo ?",
-      description:
-        "Toutes les modifications (colis, tickets, paiements, utilisateurs) seront remplacées par les données de démonstration d'origine.",
-      confirmLabel: "Réinitialiser",
+      title: t("feedback.resetDemoTitle"),
+      description: t("feedback.resetDemoDesc"),
+      confirmLabel: t("feedback.resetDemoConfirm"),
+      cancelLabel: t("common.cancel"),
       tone: "danger",
     });
     if (!ok) return;
     resetDemo();
-    toast.success("Démo réinitialisée", "Les données d'origine sont restaurées.");
+    toast.success(t("feedback.resetDemoDone"), t("feedback.resetDemoDoneDesc"));
     router.refresh();
   }
 
   async function onSignOut() {
     await signOut();
-    router.replace("/login");
+    router.replace(`/login?tenant=${tenant.id}`);
   }
 
   const flatItems = useMemo<PortalNavItem[]>(() => {
@@ -105,12 +118,101 @@ export function PortalShell({
     return portalSidebarLinks(role);
   }, [sections, links, role]);
 
-  const roleLabel = ROLE_LABEL[role];
+  const roleLabel = t(`roles.${role}`);
   const userName = session?.user.name ?? "";
   const firstName = userName.split(/\s+/)[0] || userName;
+  const canCreateParcel = (CREATE_PARCEL_ROLES as readonly string[]).includes(
+    role,
+  );
 
   return (
-    <div className="portal-shell flex min-h-screen text-ops-ink">
+    <PortalCreateParcelProvider>
+      <PortalShellInner
+        title={title}
+        subtitle={subtitle}
+        role={role}
+        flatItems={flatItems}
+        pathname={pathname}
+        portalPrefix={portalPrefix}
+        tenantId={tenant.id}
+        tenantShell={tenant.shell}
+        tenantSubdomain={tenant.subdomain}
+        isMock={isMock}
+        settingsHref={settingsHref}
+        accountOpen={accountOpen}
+        setAccountOpen={setAccountOpen}
+        roleLabel={roleLabel}
+        userName={userName}
+        firstName={firstName}
+        canCreateParcel={canCreateParcel}
+        session={session}
+        onSignOut={onSignOut}
+        onResetDemo={onResetDemo}
+      >
+        {children}
+      </PortalShellInner>
+    </PortalCreateParcelProvider>
+  );
+}
+
+type PortalShellInnerProps = {
+  children: ReactNode;
+  title: string;
+  subtitle: string;
+  role: AppRole;
+  flatItems: PortalNavItem[];
+  pathname: string;
+  portalPrefix: string;
+  tenantId: string;
+  tenantShell: string;
+  tenantSubdomain: string;
+  isMock: boolean;
+  settingsHref: string;
+  accountOpen: boolean;
+  setAccountOpen: (open: boolean) => void;
+  roleLabel: string;
+  userName: string;
+  firstName: string;
+  canCreateParcel: boolean;
+  session: ReturnType<typeof useAuth>["session"];
+  onSignOut: () => Promise<void>;
+  onResetDemo: () => Promise<void>;
+};
+
+function PortalShellInner({
+  children,
+  title,
+  subtitle,
+  role,
+  flatItems,
+  pathname,
+  portalPrefix,
+  tenantId,
+  tenantShell,
+  tenantSubdomain,
+  isMock,
+  settingsHref,
+  accountOpen,
+  setAccountOpen,
+  roleLabel,
+  userName,
+  firstName,
+  canCreateParcel,
+  session,
+  onSignOut,
+  onResetDemo,
+}: PortalShellInnerProps) {
+  const t = useT();
+  const { createOpen, setCreateOpen, openCreateParcel } =
+    usePortalCreateParcel();
+
+  return (
+    <div
+      className="portal-shell flex min-h-screen text-ops-ink"
+      data-tenant={tenantId}
+      data-tenant-shell={tenantShell}
+      data-tenant-subdomain={tenantSubdomain}
+    >
       <aside className="portal-sidebar sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col overflow-hidden lg:flex">
         <div className="flex h-full min-h-0 flex-col">
           <div className="shrink-0 px-4 pb-3 pt-4">
@@ -131,7 +233,7 @@ export function PortalShell({
             </div>
             {isMock ? (
               <p className="mt-2.5 inline-flex rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-[#E1D2A7]">
-                Mode démo
+                {t("auth.subtitleDemo").replace(" · ", "")}
               </p>
             ) : null}
           </div>
@@ -140,27 +242,43 @@ export function PortalShell({
             <div className="space-y-0.5">
               {flatItems.map((item) => {
                 const Icon = item.icon;
-                const active = navItemActive(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
+                const active =
+                  item.action === "create-parcel"
+                    ? createOpen
+                    : navItemActive(pathname, item.href);
+                const className = cn(
+                  "flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition",
+                  active
+                    ? "bg-gradient-to-r from-ops-accent to-[#7f1d1d] text-white shadow-[0_0_20px_rgba(225,29,72,0.25)]"
+                    : "text-ops-ink/55 hover:bg-ops-ink/[0.05] hover:text-ops-ink/90",
+                );
+                const icon = (
+                  <Icon
                     className={cn(
-                      "flex min-h-10 items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition",
-                      active
-                        ? "bg-gradient-to-r from-ops-accent to-[#7f1d1d] text-white shadow-[0_0_20px_rgba(225,29,72,0.25)]"
-                        : "text-ops-ink/55 hover:bg-ops-ink/[0.05] hover:text-ops-ink/90",
+                      "h-[18px] w-[18px] shrink-0",
+                      active ? "opacity-100" : "opacity-80",
                     )}
-                  >
-                    <Icon
-                      className={cn(
-                        "h-[18px] w-[18px] shrink-0",
-                        active ? "opacity-100" : "opacity-80",
-                      )}
-                      strokeWidth={1.9}
-                      aria-hidden
-                    />
-                    <span className="truncate">{item.label}</span>
+                    strokeWidth={1.9}
+                    aria-hidden
+                  />
+                );
+                if (item.action === "create-parcel") {
+                  return (
+                    <button
+                      key={item.href}
+                      type="button"
+                      onClick={openCreateParcel}
+                      className={className}
+                    >
+                      {icon}
+                      <span className="truncate">{t(item.labelKey)}</span>
+                    </button>
+                  );
+                }
+                return (
+                  <Link key={item.href} href={item.href} className={className}>
+                    {icon}
+                    <span className="truncate">{t(item.labelKey)}</span>
                   </Link>
                 );
               })}
@@ -182,7 +300,7 @@ export function PortalShell({
                 </p>
               </div>
               <ChevronRight
-                className="h-4 w-4 shrink-0 text-ops-ink/35"
+                className="h-4 w-4 shrink-0 text-ops-ink/35 rtl:rotate-180"
                 aria-hidden
               />
             </Link>
@@ -194,7 +312,7 @@ export function PortalShell({
                 className="inline-flex items-center gap-1.5 text-ops-ink/45 transition hover:text-ops-ink/80"
               >
                 <LogOut className="h-3.5 w-3.5" />
-                Déconnexion
+                {t("common.signOut")}
               </button>
               {isMock ? (
                 <button
@@ -203,7 +321,7 @@ export function PortalShell({
                   className="inline-flex items-center gap-1.5 text-ops-ink/45 transition hover:text-ops-ink/80"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Reset démo
+                  {t("common.resetDemo")}
                 </button>
               ) : null}
             </div>
@@ -239,7 +357,7 @@ export function PortalShell({
               role="search"
             >
               <label className="sr-only" htmlFor="portal-search">
-                Rechercher
+                {t("common.search")}
               </label>
               <div className="flex items-center gap-2 rounded-xl border border-ops-card bg-ops-ink/[0.04] px-3 py-2.5 transition focus-within:border-ops-ink/20 focus-within:bg-ops-ink/[0.06]">
                 <Search
@@ -249,13 +367,14 @@ export function PortalShell({
                 <input
                   id="portal-search"
                   name="q"
-                  placeholder="Rechercher un colis, un client, une référence…"
+                  placeholder={t("common.searchPlaceholder")}
                   className="min-w-0 flex-1 bg-transparent text-sm text-ops-ink outline-none placeholder:text-ops-ink/30"
                 />
               </div>
             </form>
 
-            <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+            <div className="ms-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+              <LocaleToggle tone="on-dark" compact />
               <ThemeToggle tone="on-dark" iconOnly />
               {session ? (
                 <NotificationsMenu
@@ -276,7 +395,7 @@ export function PortalShell({
                 type="button"
                 onClick={() => setAccountOpen(true)}
                 className="inline-flex items-center rounded-xl p-1 text-ops-ink/90 transition hover:bg-ops-ink/[0.06] lg:hidden"
-                aria-label="Compte"
+                aria-label={t("common.account")}
                 aria-expanded={accountOpen}
               >
                 <Avatar name={userName} className="h-8 w-8" />
@@ -295,13 +414,13 @@ export function PortalShell({
           <button
             type="button"
             className="absolute inset-0 bg-black/55"
-            aria-label="Fermer le compte"
+            aria-label={t("common.close")}
             onClick={() => setAccountOpen(false)}
           />
           <div className="absolute inset-x-0 top-[3.75rem] mx-auto w-full max-w-lg px-3 md:top-[4.25rem]">
             <div
               role="dialog"
-              aria-label="Compte"
+              aria-label={t("common.account")}
               className="rounded-2xl border border-ops-card bg-ops-page p-3 shadow-ops"
             >
               <div className="flex items-center gap-3 rounded-xl px-2 py-2">
@@ -324,8 +443,8 @@ export function PortalShell({
                     className="flex items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold text-ops-ink/80 transition hover:bg-ops-ink/[0.06]"
                   >
                     <Settings className="h-5 w-5 shrink-0" strokeWidth={2} />
-                    <span>Paramètres</span>
-                    <ChevronRight className="ml-auto h-4 w-4 text-ops-ink/35" />
+                    <span>{t("nav.settings")}</span>
+                    <ChevronRight className="ms-auto h-4 w-4 text-ops-ink/35 rtl:rotate-180" />
                   </Link>
                 </li>
                 <li>
@@ -338,7 +457,7 @@ export function PortalShell({
                     className="flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold text-ops-ink/80 transition hover:bg-ops-ink/[0.06]"
                   >
                     <LogOut className="h-5 w-5 shrink-0" strokeWidth={2} />
-                    <span>Déconnexion</span>
+                    <span>{t("common.signOut")}</span>
                   </button>
                 </li>
                 {isMock ? (
@@ -352,7 +471,7 @@ export function PortalShell({
                       className="flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold text-ops-ink/80 transition hover:bg-ops-ink/[0.06]"
                     >
                       <RotateCcw className="h-5 w-5 shrink-0" strokeWidth={2} />
-                      <span>Reset démo</span>
+                      <span>{t("common.resetDemo")}</span>
                     </button>
                   </li>
                 ) : null}
@@ -363,6 +482,14 @@ export function PortalShell({
       ) : null}
 
       {session?.accessToken ? <SupportBotWidget /> : null}
+
+      {canCreateParcel ? (
+        <CreateParcelWizard
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => emitParcelCreated()}
+        />
+      ) : null}
     </div>
   );
 }

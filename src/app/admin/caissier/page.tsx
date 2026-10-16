@@ -22,6 +22,7 @@ import {
 import { formatTnd, type CodItem, type CodPayload } from "@/lib/domain";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
+import { useT } from "@/i18n/locale-context";
 
 type Filter = "OPEN" | "SETTLED";
 
@@ -54,94 +55,151 @@ function CodItemsTable({
   );
 
   return (
-    <div className="overflow-x-auto">
-      <table className={tableClass}>
-        <thead className={theadClass}>
-          <tr>
-            <SortableTh
-              label="Colis"
-              column="code"
-              activeKey={sortKey}
-              sortDir={sortDir}
-              onSort={toggleSort}
-            />
-            <SortableTh
-              label="Destinataire"
-              column="recipientName"
-              activeKey={sortKey}
-              sortDir={sortDir}
-              onSort={toggleSort}
-            />
-            <SortableTh
-              label="Montant"
-              column="price"
-              activeKey={sortKey}
-              sortDir={sortDir}
-              onSort={toggleSort}
-              className="text-right"
-              buttonClassName="ml-auto"
-            />
-            <SortableTh
-              label="Statut"
-              column="settled"
-              activeKey={sortKey}
-              sortDir={sortDir}
-              onSort={toggleSort}
-            />
-            {filter === "OPEN" ? (
-              <th className={`${thClass} text-right`}>Action</th>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((item) => (
-            <tr key={item.id} className={trClass}>
-              <td className={`${tdClass} font-mono text-xs font-semibold text-ops-ink`}>
-                {item.code}
-              </td>
-              <td className={tdClass}>
-                <p className="text-ops-ink">{item.recipientName}</p>
-                <p className="text-xs text-ops-ink/50">{item.city}</p>
-              </td>
-              <td className={`${tdClass} text-right font-semibold text-ops-ink`}>
+    <>
+      <ul className="space-y-2.5 md:hidden">
+        {sorted.map((item) => (
+          <li
+            key={item.id}
+            className="space-y-3 rounded-2xl border border-ops-card bg-ops-page/40 px-3.5 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-mono text-[12px] font-semibold text-ops-ink">
+                  {item.code}
+                </p>
+                <p className="mt-1 truncate text-[14px] font-semibold text-ops-ink">
+                  {item.recipientName}
+                </p>
+                <p className="mt-0.5 text-[12px] text-ops-ink/45">{item.city}</p>
+              </div>
+              <p className="shrink-0 font-display text-[14px] font-bold tabular-nums text-ops-ink">
                 {formatTnd(item.price)}
-              </td>
-              <td className={tdClass}>
-                {item.codSettledAt ? (
-                  <Badge tone="success" dot>
-                    Encaissé le{" "}
-                    {new Date(item.codSettledAt).toLocaleDateString("fr-TN")}
-                  </Badge>
-                ) : (
-                  <Badge tone="warning" dot>
-                    En attente
-                  </Badge>
-                )}
-              </td>
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {item.codSettledAt ? (
+                <Badge tone="success" dot>
+                  Encaissé le{" "}
+                  {new Date(item.codSettledAt).toLocaleDateString("fr-TN")}
+                </Badge>
+              ) : (
+                <Badge tone="warning" dot>
+                  En attente
+                </Badge>
+              )}
               {filter === "OPEN" ? (
-                <td className={`${tdClass} text-right`}>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={busyKey !== null}
-                    onClick={() =>
-                      onSettle(
-                        [item.id],
-                        item.code ?? `#${item.id}`,
-                        `item-${item.id}`,
-                        item.price,
-                      )
-                    }
-                  >
-                    Encaisser
-                  </Button>
-                </td>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="ms-auto"
+                  disabled={busyKey !== null}
+                  onClick={() =>
+                    onSettle(
+                      [item.id],
+                      item.code ?? `#${item.id}`,
+                      `item-${item.id}`,
+                      item.price,
+                    )
+                  }
+                >
+                  Encaisser
+                </Button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto md:block">
+        <table className={tableClass}>
+          <thead className={theadClass}>
+            <tr>
+              <SortableTh
+                label="Colis"
+                column="code"
+                activeKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableTh
+                label="Destinataire"
+                column="recipientName"
+                activeKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableTh
+                label="Montant"
+                column="price"
+                activeKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="text-right"
+                buttonClassName="ml-auto"
+              />
+              <SortableTh
+                label="Statut"
+                column="settled"
+                activeKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+              />
+              {filter === "OPEN" ? (
+                <th className={`${thClass} text-right`}>Action</th>
               ) : null}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {sorted.map((item) => (
+              <tr key={item.id} className={trClass}>
+                <td
+                  className={`${tdClass} font-mono text-xs font-semibold text-ops-ink`}
+                >
+                  {item.code}
+                </td>
+                <td className={tdClass}>
+                  <p className="text-ops-ink">{item.recipientName}</p>
+                  <p className="text-xs text-ops-ink/50">{item.city}</p>
+                </td>
+                <td className={`${tdClass} text-right font-semibold text-ops-ink`}>
+                  {formatTnd(item.price)}
+                </td>
+                <td className={tdClass}>
+                  {item.codSettledAt ? (
+                    <Badge tone="success" dot>
+                      Encaissé le{" "}
+                      {new Date(item.codSettledAt).toLocaleDateString("fr-TN")}
+                    </Badge>
+                  ) : (
+                    <Badge tone="warning" dot>
+                      En attente
+                    </Badge>
+                  )}
+                </td>
+                {filter === "OPEN" ? (
+                  <td className={`${tdClass} text-right`}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busyKey !== null}
+                      onClick={() =>
+                        onSettle(
+                          [item.id],
+                          item.code ?? `#${item.id}`,
+                          `item-${item.id}`,
+                          item.price,
+                        )
+                      }
+                    >
+                      Encaisser
+                    </Button>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -163,6 +221,7 @@ function groupByDriver(items: CodItem[]): DriverGroup[] {
 }
 
 export default function CaissierPage() {
+  const t = useT();
   const request = useApi();
   const toast = useToast();
   const confirm = useConfirm();
@@ -200,8 +259,8 @@ export default function CaissierPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Caisse COD"
-        description="Rapprochez les montants encaissés par les livreurs à la livraison"
+        title={t("misc.caissier.title")}
+        description={t("misc.caissier.description")}
       />
 
       {error ? <ErrorBanner message={error} onRetry={() => void reload()} /> : null}

@@ -12,6 +12,7 @@ import {
 import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui";
+import { useT } from "@/i18n/locale-context";
 import { cn } from "@/lib/cn";
 
 type ToastTone = "success" | "error" | "info";
@@ -54,6 +55,7 @@ const TOAST_STYLE: Record<ToastTone, { icon: typeof Info; className: string }> =
 };
 
 export function FeedbackProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
   const [confirmState, setConfirmState] = useState<
@@ -99,7 +101,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
 
         <div
           aria-live="polite"
-          className="pointer-events-none fixed inset-x-0 bottom-4 z-[120] flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end"
+          className="pointer-events-none fixed inset-x-0 bottom-4 z-[120] flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:end-4 sm:items-end"
         >
           {toasts.map((toast) => {
             const { icon: Icon, className } = TOAST_STYLE[toast.tone];
@@ -123,7 +125,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
                   type="button"
                   onClick={() => dismiss(toast.id)}
                   className="rounded-md p-1 text-ops-ink/50 hover:text-ops-ink"
-                  aria-label="Fermer la notification"
+                  aria-label={t("common.close")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -136,23 +138,18 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           open={Boolean(confirmState)}
           onClose={() => settle(false)}
           title={confirmState?.title ?? ""}
-          description={
-            confirmState?.description ??
-            (confirmState?.tone === "danger"
-              ? "Cette action est définitive."
-              : "Voulez-vous continuer ?")
-          }
+          description={confirmState?.description}
           size="md"
           footer={
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="secondary" onClick={() => settle(false)}>
-                {confirmState?.cancelLabel ?? "Annuler"}
+                {confirmState?.cancelLabel ?? t("feedback.cancelDefault")}
               </Button>
               <Button
                 variant={confirmState?.tone === "danger" ? "danger" : "primary"}
                 onClick={() => settle(true)}
               >
-                {confirmState?.confirmLabel ?? "Confirmer"}
+                {confirmState?.confirmLabel ?? t("feedback.confirmDefault")}
               </Button>
             </div>
           }

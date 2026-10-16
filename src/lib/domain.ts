@@ -129,6 +129,10 @@ export type ReturnLot = {
   status: ReturnLotStatus;
   senderId: number;
   sender?: { id: number; name: string; email: string } | null;
+  destinationLabel?: string | null;
+  destinationAgencyId?: number | null;
+  destinationAgency?: { id: number; name: string; governorate?: string } | null;
+  colisCount?: number;
   itemCount: number;
   closedAt?: string | null;
   createdAt: string;
@@ -158,6 +162,8 @@ export type PickupManifest = {
   sender?: { id: number; name: string; email: string } | null;
   createdById: number;
   createdBy?: { id: number; name: string; email: string } | null;
+  dechargeUrl?: string | null;
+  cinUrl?: string | null;
   itemCount: number;
   closedAt?: string | null;
   createdAt: string;
@@ -185,7 +191,21 @@ export const PICKUP_MANIFEST_KIND_LABEL: Record<PickupManifestKind, string> = {
   PRE_ENLEVEMENT: "Pré-enlèvement",
 };
 
-export type PaymentStatus = "EN_DEMANDE" | "APPROUVE" | "PAYE" | "REJETE";
+export type PaymentStatus =
+  | "EN_DEMANDE"
+  | "VALIDE_FINANCE"
+  | "VALIDE_CHEF"
+  | "VALIDE_EXPERT"
+  | "APPROUVE"
+  | "PAYE"
+  | "REJETE";
+
+export type PaymentHistoryEntry = {
+  at: string;
+  status: PaymentStatus;
+  label: string;
+  actorName?: string | null;
+};
 
 export type Payment = {
   id: number;
@@ -194,8 +214,12 @@ export type Payment = {
   note: string | null;
   createdAt: string;
   updatedAt?: string;
-  sender?: { id?: number; name: string; email: string };
+  sender?: { id?: number; name: string; email: string; agencyId?: number | null };
   items: Array<{ parcel: { id: number; code: string | null }; amount: number | string }>;
+  history?: PaymentHistoryEntry[];
+  isSmall?: boolean;
+  requiresExpert?: boolean;
+  budgetStress?: boolean;
 };
 
 export type Zone = {

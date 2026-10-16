@@ -32,7 +32,6 @@ export const SCAN_CASES: ScanCase[] = [
       "ADMIN",
       "CHEF_AGENCE",
       "MAGASINIER",
-      "PICKUP",
       "LIVREUR",
     ],
     needsLivreur: true,

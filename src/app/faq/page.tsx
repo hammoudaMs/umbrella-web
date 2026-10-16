@@ -1,26 +1,26 @@
-import { PageHeader, Panel } from "@/components/ui";
+"use client";
 
-const FAQ = [
-  {
-    q: "Comment créer un colis ?",
-    a: "Connectez-vous en expéditeur, ouvrez « Ajouter colis » et renseignez destinataire, adresse et prix COD.",
-  },
-  {
-    q: "Comment suivre un colis ?",
-    a: "Utilisez /track avec le code bordereau, ou consultez votre portail.",
-  },
-  {
-    q: "Quand suis-je payé ?",
-    a: "Demandez un paiement sur les colis livrés depuis l’espace Paiements.",
-  },
-];
+import { useMemo } from "react";
+import { PageHeader, Panel } from "@/components/ui";
+import { useT } from "@/i18n/locale-context";
 
 export default function FaqPage() {
+  const t = useT();
+
+  const faq = useMemo(
+    () => [
+      { q: t("misc.faqApp.q1"), a: t("misc.faqApp.a1") },
+      { q: t("misc.faqApp.q2"), a: t("misc.faqApp.a2") },
+      { q: t("misc.faqApp.q3"), a: t("misc.faqApp.a3") },
+    ],
+    [t],
+  );
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
-      <PageHeader title="FAQ" description="Questions fréquentes" />
+      <PageHeader title={t("landing.navFaq")} description={t("landing.faqTitle")} />
       <div className="mt-8 space-y-3">
-        {FAQ.map((item) => (
+        {faq.map((item) => (
           <Panel key={item.q}>
             <h2 className="font-display text-lg font-bold text-ink">{item.q}</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink-muted">{item.a}</p>

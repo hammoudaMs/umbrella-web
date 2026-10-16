@@ -10,6 +10,7 @@ import {
 } from "react";
 import { AlertTriangle, Loader2, Search, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useStatusLabel } from "@/i18n/hooks";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 export function PageHeader({
@@ -397,8 +398,10 @@ function opsStatusTone(status: string): { bg: string; ink: string } {
 }
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
+  const labelOf = useStatusLabel();
   const meta = STATUS_META[status as StatusKey];
-  if (!meta) return <Badge className={className}>{status.replace(/_/g, " ")}</Badge>;
+  const label = labelOf(status);
+  if (!meta) return <Badge className={className}>{label}</Badge>;
   const tone = opsStatusTone(status);
   return (
     <span
@@ -407,12 +410,12 @@ export function StatusBadge({ status, className }: { status: string; className?:
         className,
       )}
       style={{ backgroundColor: tone.bg, color: tone.ink }}
-      title={meta.label}
+      title={label}
     >
       <span aria-hidden className="shrink-0">
         {meta.emoji}
       </span>
-      <span className="min-w-0">{meta.label}</span>
+      <span className="min-w-0">{label}</span>
     </span>
   );
 }

@@ -1,3 +1,4 @@
+import type { TranslateFn } from "@/i18n/types";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 export { DASHBOARD_STATUS_KEYS } from "@/lib/dashboard-statuses";
@@ -27,6 +28,11 @@ export function colisStatusHref(basePath: string, status: StatusKey) {
   return `${basePath}/parcels?status=${encodeURIComponent(status)}`;
 }
 
-export function statusLabel(status: string): string {
+export function statusLabel(status: string, t?: TranslateFn): string {
+  if (t) {
+    const key = `status.${status}`;
+    const value = t(key);
+    if (value !== key) return value;
+  }
   return STATUS_META[status as StatusKey]?.label ?? status;
 }

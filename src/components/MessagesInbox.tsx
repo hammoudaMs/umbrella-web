@@ -27,7 +27,7 @@ import type {
   CommsPerson,
   ConversationSummary,
 } from "@/lib/comms-types";
-import { ROLE_LABEL } from "@/lib/roles";
+import { useRoleLabel } from "@/i18n/hooks";
 import { useCommsSocket, COMMS_CHANNEL } from "@/lib/use-comms-socket";
 import { USE_MOCK } from "@/lib/mock-mode";
 import { cn } from "@/lib/cn";
@@ -53,6 +53,7 @@ export function MessagesInbox({
   autoStartCall?: boolean;
 } = {}) {
   const { session } = useAuth();
+  const roleLabelFn = useRoleLabel();
   const toast = useToast();
   const { startCall, phase } = useCall();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -323,7 +324,7 @@ export function MessagesInbox({
                         {c.lastMessage?.body ?? "—"}
                       </span>
                       <span className="text-[10px] uppercase tracking-wide text-ops-ink/35">
-                        {c.peer ? ROLE_LABEL[c.peer.role] : ""}
+                        {c.peer ? roleLabelFn(c.peer.role) : ""}
                         {online ? " · en ligne" : ""}
                       </span>
                     </button>
@@ -351,7 +352,7 @@ export function MessagesInbox({
                     {active.peer?.name}
                   </p>
                   <p className="text-xs text-ops-ink/45">
-                    {active.peer ? ROLE_LABEL[active.peer.role] : ""}
+                    {active.peer ? roleLabelFn(active.peer.role) : ""}
                     {typingPeer ? " · écrit…" : ""}
                   </p>
                 </div>
@@ -445,7 +446,7 @@ export function MessagesInbox({
                     <span>
                       <span className="block font-medium text-ops-ink">{u.name}</span>
                       <span className="text-xs text-ops-ink/45">
-                        {ROLE_LABEL[u.role]} · {u.email}
+                        {roleLabelFn(u.role)} · <span className="keep-ltr">{u.email}</span>
                       </span>
                     </span>
                     <Search className="h-4 w-4 text-ops-ink/30" aria-hidden />

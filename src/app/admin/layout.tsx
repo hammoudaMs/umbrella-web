@@ -1,21 +1,11 @@
 "use client";
 
-import { RequireRole } from "@/components/RequireRole";
-import { portalSidebarLinks } from "@/lib/portal-nav-config";
+import { TenantPortal } from "@/tenants/TenantPortal";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <RequireRole
-      roles={["ADMIN"]}
-      title="Admin"
-      subtitle="Tableau de bord"
-      links={portalSidebarLinks("ADMIN")}
-    >
-      {children}
-    </RequireRole>
-  );
+  return <TenantPortal tenantId="admin">{children}</TenantPortal>;
 }

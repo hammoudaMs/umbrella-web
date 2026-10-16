@@ -2,6 +2,7 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/lib/theme-context";
+import { useT } from "@/i18n/locale-context";
 import { cn } from "@/lib/cn";
 
 export function ThemeToggle({
@@ -14,6 +15,7 @@ export function ThemeToggle({
   iconOnly?: boolean;
 }) {
   const { theme, toggleTheme } = useTheme();
+  const t = useT();
   const isDark = theme === "dark";
   const isIconDark = iconOnly || tone === "on-dark";
 
@@ -21,8 +23,10 @@ export function ThemeToggle({
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label={isDark ? "Passer en thème clair" : "Passer en thème sombre"}
-      title={isDark ? "Thème clair" : "Thème sombre"}
+      aria-label={
+        isDark ? t("common.themeToggleLight") : t("common.themeToggleDark")
+      }
+      title={isDark ? t("common.themeLight") : t("common.themeDark")}
       className={cn(
         "inline-flex items-center justify-center transition",
         isIconDark
@@ -43,7 +47,9 @@ export function ThemeToggle({
         <Moon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
       )}
       {!isIconDark ? (
-        <span className="hidden sm:inline">{isDark ? "Clair" : "Sombre"}</span>
+        <span className="hidden sm:inline">
+          {isDark ? t("common.themeLight") : t("common.themeDark")}
+        </span>
       ) : null}
     </button>
   );

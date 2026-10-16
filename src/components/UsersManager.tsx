@@ -26,16 +26,16 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import type { ApprovalStatus, UserRow } from "@/lib/domain";
 import type { Agency } from "@/lib/domain";
-import { ROLE_LABEL, roleNeedsAgency, type AppRole } from "@/lib/roles";
+import { useRoleLabel } from "@/i18n/hooks";
+import { roleNeedsAgency, type AppRole } from "@/lib/roles";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
 
 type UserSortKey = "name" | "phone" | "role" | "isActive";
 
-const USER_SORT = {
+const USER_SORT_BASE = {
   name: (u: UserRow) => u.name,
   phone: (u: UserRow) => u.phone ?? "",
-  role: (u: UserRow) => ROLE_LABEL[u.role],
   isActive: (u: UserRow) => (u.isActive ? 1 : 0),
 } as const;
 
@@ -58,6 +58,7 @@ const CREATABLE_ROLES: AppRole[] = [
   "SUPPORT",
   "PICKUP",
   "MAGASINIER",
+  "EXPERT_COMPTABLE",
   "FINANCE",
   "EXPEDITEUR",
   "LIVREUR",
@@ -71,6 +72,7 @@ const ROLE_TONE: Record<AppRole, BadgeTone> = {
   SUPPORT: "info",
   PICKUP: "success",
   MAGASINIER: "info",
+  EXPERT_COMPTABLE: "gold",
   FINANCE: "gold",
   EXPEDITEUR: "info",
   LIVREUR: "success",
@@ -131,6 +133,14 @@ export function UsersManager({
   allowSuperAdmin?: boolean;
 }) {
   const { session } = useAuth();
+  const roleLabelFn = useRoleLabel();
+  const userSort = useMemo(
+    () => ({
+      ...USER_SORT_BASE,
+      role: (u: UserRow) => roleLabelFn(u.role),
+    }),
+    [roleLabelFn],
+  );
   const request = useApi();
   const toast = useToast();
   const confirm = useConfirm();
@@ -175,7 +185,7 @@ export function UsersManager({
   const { sorted: visible, sortKey, sortDir, toggleSort } = useTableSort<
     UserRow,
     UserSortKey
-  >(filtered, USER_SORT, "name");
+  >(filtered, userSort, "name");
 
   function canEdit(user: UserRow) {
     if (user.role === "SUPER_ADMIN" && !allowSuperAdmin) return false;
@@ -202,7 +212,7 @@ export function UsersManager({
           ? Number(agencyRaw) || undefined
           : null,
       });
-      toast.success("Compte créé", `${user.name} · ${ROLE_LABEL[user.role]}`);
+      toast.success("Compte créé", `${user.name} · ${roleLabelFn(user.role)}`);
       setCreating(false);
       await reload();
     } catch (err) {
@@ -241,7 +251,7 @@ export function UsersManager({
         "PATCH",
         payload,
       );
-      toast.success("Compte mis à jour", `${user.name} · ${ROLE_LABEL[user.role]}`);
+      toast.success("Compte mis à jour", `${user.name} · ${roleLabelFn(user.role)}`);
       setEditing(null);
       await reload();
     } catch (err) {
@@ -308,6 +318,83 @@ export function UsersManager({
   const countApproval = (status: ApprovalStatus) =>
     users.filter((u) => (u.approvalStatus ?? "APPROVED") === status).length;
 
+  function userActions(u: UserRow) {
+    const isSelf = u.id === session?.user.id;
+    const editable = canEdit(u);
+    const approval = (u.approvalStatus ?? "APPROVED") as ApprovalStatus;
+    const canVerify =
+      editable &&
+      !isSelf &&
+      (u.role === "EXPEDITEUR" || u.role === "LIVREUR");
+    return (
+      <div className="flex flex-wrap gap-2 md:justify-end">
+        {canVerify && approval === "PENDING" ? (
+          <>
+            <Button
+              size="sm"
+              variant="success"
+              icon={Check}
+              loading={busyId === u.id}
+              onClick={() => void setApproval(u, "APPROVED")}
+            >
+              Approuver
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={X}
+              loading={busyId === u.id}
+              onClick={() => void setApproval(u, "REJECTED")}
+            >
+              Refuser
+            </Button>
+          </>
+        ) : null}
+        {canVerify && approval === "REJECTED" ? (
+          <Button
+            size="sm"
+            variant="success"
+            icon={Check}
+            loading={busyId === u.id}
+            onClick={() => void setApproval(u, "APPROVED")}
+          >
+            Approuver
+          </Button>
+        ) : null}
+        {editable ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={Pencil}
+            onClick={() => {
+              setErrors({});
+              setDraftRole(u.role);
+              setEditing(u);
+            }}
+          >
+            Modifier
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          variant={u.isActive ? "secondary" : "success"}
+          disabled={isSelf || !editable}
+          loading={busyId === u.id}
+          title={
+            isSelf
+              ? "Vous ne pouvez pas désactiver votre propre compte"
+              : !editable
+                ? "Compte hors périmètre"
+                : undefined
+          }
+          onClick={() => void toggleActive(u)}
+        >
+          {u.isActive ? "Désactiver" : "Activer"}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -365,7 +452,7 @@ export function UsersManager({
                 { value: "ALL", label: "Tous", count: users.length },
                 ...roles.map((r) => ({
                   value: r,
-                  label: ROLE_LABEL[r],
+                  label: roleLabelFn(r),
                   count: countFor(r),
                 })),
               ]}
@@ -397,178 +484,162 @@ export function UsersManager({
             />
           </div>
         ) : (
-          <table className={tableClass}>
-            <thead className={theadClass}>
-              <tr>
-                <SortableTh
-                  label="Utilisateur"
-                  column="name"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Téléphone"
-                  column="phone"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                  className="hidden md:table-cell"
-                />
-                <SortableTh
-                  label="Rôle"
-                  column="role"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Statut"
-                  column="isActive"
-                  activeKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <th className={`${thClass} text-right`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="space-y-3 p-3 md:hidden">
               {visible.map((u) => {
                 const isSelf = u.id === session?.user.id;
-                const editable = canEdit(u);
                 const approval = (u.approvalStatus ?? "APPROVED") as ApprovalStatus;
                 const summary = profileSummary(u);
-                const canVerify =
-                  editable &&
-                  !isSelf &&
-                  (u.role === "EXPEDITEUR" || u.role === "LIVREUR");
                 return (
-                  <tr key={u.id} className={trClass}>
-                    <td className={tdClass}>
-                      <div className="flex items-center gap-3">
-                        <Avatar name={u.name} />
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-ops-ink">
-                            {u.name}
-                            {isSelf ? (
-                              <span className="ml-1.5 text-xs font-normal text-ops-ink/50">
-                                (vous)
-                              </span>
-                            ) : null}
-                          </p>
-                          <p className="truncate text-xs text-ops-ink/50">
-                            {u.email}
-                          </p>
-                          {summary ? (
-                            <p className="mt-0.5 line-clamp-2 text-[11px] text-ops-ink/45">
-                              {summary}
-                            </p>
+                  <li
+                    key={u.id}
+                    className="space-y-3 rounded-2xl border border-ops-card bg-ops-page/40 px-3.5 py-3.5"
+                  >
+                    <div className="flex items-start gap-3">
+                      <Avatar name={u.name} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-ops-ink">
+                          {u.name}
+                          {isSelf ? (
+                            <span className="ml-1.5 text-xs font-normal text-ops-ink/50">
+                              (vous)
+                            </span>
                           ) : null}
-                        </div>
+                        </p>
+                        <p className="truncate text-[12px] text-ops-ink/45">
+                          {u.email}
+                          {u.phone ? ` · ${u.phone}` : ""}
+                        </p>
+                        {summary ? (
+                          <p className="mt-1 line-clamp-2 text-[11px] text-ops-ink/40">
+                            {summary}
+                          </p>
+                        ) : null}
                       </div>
-                    </td>
-                    <td
-                      className={`${tdClass} hidden text-ops-ink/50 md:table-cell`}
-                    >
-                      {u.phone || "—"}
-                    </td>
-                    <td className={tdClass}>
-                      <Badge tone={ROLE_TONE[u.role]}>
-                        {ROLE_LABEL[u.role]}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={ROLE_TONE[u.role]}>{roleLabelFn(u.role)}</Badge>
+                      <Badge tone={APPROVAL_TONE[approval]} dot>
+                        {APPROVAL_LABEL[approval]}
                       </Badge>
-                      {u.agency ? (
-                        <p className="mt-1 text-[11px] text-ops-ink/45">
-                          {u.agency.name}
-                        </p>
-                      ) : null}
-                      {u.homeZone ? (
-                        <p className="mt-1 text-[11px] text-ops-ink/45">
-                          {u.homeZone.name}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className={tdClass}>
-                      <div className="flex flex-col items-start gap-1.5">
-                        <Badge tone={APPROVAL_TONE[approval]} dot>
-                          {APPROVAL_LABEL[approval]}
-                        </Badge>
-                        <Badge tone={u.isActive ? "success" : "neutral"} dot>
-                          {u.isActive ? "Actif" : "Désactivé"}
-                        </Badge>
-                      </div>
-                    </td>
-                    <td className={`${tdClass} text-right`}>
-                      <div className="inline-flex flex-wrap justify-end gap-2">
-                        {canVerify && approval === "PENDING" ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="success"
-                              icon={Check}
-                              loading={busyId === u.id}
-                              onClick={() => void setApproval(u, "APPROVED")}
-                            >
-                              Approuver
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              icon={X}
-                              loading={busyId === u.id}
-                              onClick={() => void setApproval(u, "REJECTED")}
-                            >
-                              Refuser
-                            </Button>
-                          </>
-                        ) : null}
-                        {canVerify && approval === "REJECTED" ? (
-                          <Button
-                            size="sm"
-                            variant="success"
-                            icon={Check}
-                            loading={busyId === u.id}
-                            onClick={() => void setApproval(u, "APPROVED")}
-                          >
-                            Approuver
-                          </Button>
-                        ) : null}
-                        {editable ? (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            icon={Pencil}
-                            onClick={() => {
-                              setErrors({});
-                              setDraftRole(u.role);
-                              setEditing(u);
-                            }}
-                          >
-                            Modifier
-                          </Button>
-                        ) : null}
-                        <Button
-                          size="sm"
-                          variant={u.isActive ? "secondary" : "success"}
-                          disabled={isSelf || !editable}
-                          loading={busyId === u.id}
-                          title={
-                            isSelf
-                              ? "Vous ne pouvez pas désactiver votre propre compte"
-                              : !editable
-                                ? "Compte hors périmètre"
-                                : undefined
-                          }
-                          onClick={() => void toggleActive(u)}
-                        >
-                          {u.isActive ? "Désactiver" : "Activer"}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+                      <Badge tone={u.isActive ? "success" : "neutral"} dot>
+                        {u.isActive ? "Actif" : "Désactivé"}
+                      </Badge>
+                    </div>
+                    {(u.agency || u.homeZone) && (
+                      <p className="text-[11px] text-ops-ink/40">
+                        {[u.agency?.name, u.homeZone?.name]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    {userActions(u)}
+                  </li>
                 );
               })}
-            </tbody>
-          </table>
+            </ul>
+            <div className="hidden md:block">
+              <table className={tableClass}>
+                <thead className={theadClass}>
+                  <tr>
+                    <SortableTh
+                      label="Utilisateur"
+                      column="name"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Téléphone"
+                      column="phone"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Rôle"
+                      column="role"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Statut"
+                      column="isActive"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <th className={`${thClass} text-right`}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((u) => {
+                    const isSelf = u.id === session?.user.id;
+                    const approval = (u.approvalStatus ??
+                      "APPROVED") as ApprovalStatus;
+                    const summary = profileSummary(u);
+                    return (
+                      <tr key={u.id} className={trClass}>
+                        <td className={tdClass}>
+                          <div className="flex items-center gap-3">
+                            <Avatar name={u.name} />
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-ops-ink">
+                                {u.name}
+                                {isSelf ? (
+                                  <span className="ml-1.5 text-xs font-normal text-ops-ink/50">
+                                    (vous)
+                                  </span>
+                                ) : null}
+                              </p>
+                              <p className="truncate text-xs text-ops-ink/50">
+                                {u.email}
+                              </p>
+                              {summary ? (
+                                <p className="mt-0.5 line-clamp-2 text-[11px] text-ops-ink/45">
+                                  {summary}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className={`${tdClass} text-ops-ink/50`}>
+                          {u.phone || "—"}
+                        </td>
+                        <td className={tdClass}>
+                          <Badge tone={ROLE_TONE[u.role]}>
+                            {roleLabelFn(u.role)}
+                          </Badge>
+                          {u.agency ? (
+                            <p className="mt-1 text-[11px] text-ops-ink/45">
+                              {u.agency.name}
+                            </p>
+                          ) : null}
+                          {u.homeZone ? (
+                            <p className="mt-1 text-[11px] text-ops-ink/45">
+                              {u.homeZone.name}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className={tdClass}>
+                          <div className="flex flex-col items-start gap-1.5">
+                            <Badge tone={APPROVAL_TONE[approval]} dot>
+                              {APPROVAL_LABEL[approval]}
+                            </Badge>
+                            <Badge tone={u.isActive ? "success" : "neutral"} dot>
+                              {u.isActive ? "Actif" : "Désactivé"}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className={`${tdClass} text-right`}>{userActions(u)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </TableCard>
 
@@ -632,7 +703,7 @@ export function UsersManager({
           >
             {roles.map((r) => (
               <option key={r} value={r}>
-                {ROLE_LABEL[r]}
+                {roleLabelFn(r)}
               </option>
             ))}
           </SelectField>
@@ -662,7 +733,7 @@ export function UsersManager({
         title="Modifier le compte"
         description={
           editing
-            ? `${editing.name} · ${ROLE_LABEL[editing.role]}`
+            ? `${editing.name} · ${roleLabelFn(editing.role)}`
             : undefined
         }
         size="md"
@@ -718,7 +789,7 @@ export function UsersManager({
             >
               {roles.map((r) => (
                 <option key={r} value={r}>
-                  {ROLE_LABEL[r]}
+                  {roleLabelFn(r)}
                 </option>
               ))}
             </SelectField>

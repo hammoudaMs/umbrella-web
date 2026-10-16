@@ -20,7 +20,7 @@ export type SignUpInput = {
   email: string;
   phone: string;
   password: string;
-  role: "EXPEDITEUR" | "LIVREUR";
+  role: "EXPEDITEUR";
   governorate: string;
   city: string;
   address: string;
@@ -47,10 +47,13 @@ export type ProfileInput = {
   name?: string;
   email?: string;
   phone?: string;
+  productTypes?: string[];
 };
 
 type AuthContextValue = {
   session: AuthSession | null;
+  /** False until localStorage session is read on the client (SSR-safe). */
+  ready: boolean;
   signIn: (email: string, password: string) => Promise<AuthSession>;
   signUp: (input: SignUpInput) => Promise<SignUpPendingResult>;
   signOut: () => Promise<void>;
@@ -101,7 +104,14 @@ function persist(session: AuthSession | null) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(() => readSession());
+  // Always start null so SSR HTML matches the first client paint.
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setSession(readSession());
+    setReady(true);
+  }, []);
 
   const applySession = useCallback((data: AuthSession) => {
     const normalized: AuthSession = {
@@ -183,7 +193,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       applySession({
         ...current,
-        user: { ...current.user, name: user.name, email: user.email, phone: user.phone },
+        user: {
+          ...current.user,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          productTypes: user.productTypes ?? current.user.productTypes,
+        },
       });
     },
     [applySession],
@@ -211,6 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       session,
+      ready,
       signIn,
       signUp,
       signOut,
@@ -220,7 +237,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       resetDemo,
       isMock: USE_MOCK,
     }),
-    [session, signIn, signUp, signOut, refresh, updateProfile, changePassword, resetDemo],
+    [
+      session,
+      ready,
+      signIn,
+      signUp,
+      signOut,
+      refresh,
+      updateProfile,
+      changePassword,
+      resetDemo,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

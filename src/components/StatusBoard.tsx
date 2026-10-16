@@ -7,6 +7,7 @@ import { useGSAP } from "@gsap/react";
 import type { StatusCard } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { DASHBOARD_STATUS_KEYS } from "@/lib/dashboard-statuses";
+import { useStatusLabel } from "@/i18n/hooks";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 gsap.registerPlugin(useGSAP);
@@ -19,6 +20,7 @@ export function StatusBoard({
   basePath: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const statusLabelFn = useStatusLabel();
 
   const visible = useMemo(() => {
     const byKey = new Map(items.map((item) => [item.key, item]));
@@ -27,13 +29,13 @@ export function StatusBoard({
       return (
         found ?? {
           key,
-          label: STATUS_META[key].label,
+          label: statusLabelFn(key),
           tone: "custom",
           count: 0,
         }
       );
     });
-  }, [items]);
+  }, [items, statusLabelFn]);
 
   useGSAP(
     () => {
@@ -70,7 +72,7 @@ export function StatusBoard({
           const href = `${basePath}/parcels?status=${encodeURIComponent(item.key)}`;
           const empty = item.count === 0;
           const emoji = meta?.emoji ?? "📋";
-          const label = meta?.label ?? item.label;
+          const label = statusLabelFn(item.key);
           const color = meta?.color ?? "#E5DBD4";
           const ink = meta?.ink ?? "#1A1414";
 

@@ -2,21 +2,24 @@
 
 import { FormEvent, useState } from "react";
 import { KeyRound, Save, UserRound } from "lucide-react";
+import { LocaleToggle } from "@/components/LocaleToggle";
 import { errorText, useToast } from "@/components/Feedback";
 import { Avatar, Badge, Button, PageHeader, Panel, TextField } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
-import { ROLE_LABEL } from "@/lib/roles";
+import { roleLabel } from "@/lib/roles";
+import { useT } from "@/i18n/locale-context";
 
 type ProfileErrors = Partial<Record<"name" | "email" | "phone", string>>;
 type PasswordErrors = Partial<Record<"current" | "next" | "confirm", string>>;
 
 export function SettingsForm({
-  description = "Coordonnées de votre compte",
+  description,
 }: {
   description?: string;
 }) {
   const { session, updateProfile, changePassword } = useAuth();
   const toast = useToast();
+  const t = useT();
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [profileErrors, setProfileErrors] = useState<ProfileErrors>({});
@@ -32,18 +35,18 @@ export function SettingsForm({
     const email = String(form.get("email") ?? "").trim();
     const phone = String(form.get("phone") ?? "").trim();
     const errors: ProfileErrors = {};
-    if (name.length < 2) errors.name = "Nom trop court";
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = "Email invalide";
-    if (phone && !/^[0-9]{8}$/.test(phone)) errors.phone = "8 chiffres";
+    if (name.length < 2) errors.name = t("common.name");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = t("common.email");
+    if (phone && !/^[0-9]{8}$/.test(phone)) errors.phone = "8";
     setProfileErrors(errors);
     if (Object.keys(errors).length) return;
 
     setSavingProfile(true);
     try {
       await updateProfile({ name, email, phone: phone || undefined });
-      toast.success("Profil enregistré");
+      toast.success(t("common.success"));
     } catch (err) {
-      toast.error("Enregistrement impossible", errorText(err));
+      toast.error(t("common.error"), errorText(err));
     } finally {
       setSavingProfile(false);
     }
@@ -57,12 +60,9 @@ export function SettingsForm({
     const next = String(form.get("next") ?? "");
     const confirmValue = String(form.get("confirm") ?? "");
     const errors: PasswordErrors = {};
-    if (!current) errors.current = "Requis";
-    if (next.length < 8) errors.next = "8 caractères minimum";
-    else if (!/[0-9]/.test(next) || !/[A-Za-z]/.test(next)) {
-      errors.next = "Mélangez lettres et chiffres";
-    }
-    if (confirmValue !== next) errors.confirm = "Les mots de passe ne correspondent pas";
+    if (!current) errors.current = t("common.required");
+    if (next.length < 8) errors.next = "8";
+    if (confirmValue !== next) errors.confirm = t("common.error");
     setPasswordErrors(errors);
     if (Object.keys(errors).length) return;
 
@@ -70,9 +70,9 @@ export function SettingsForm({
     try {
       await changePassword(current, next);
       formEl.reset();
-      toast.success("Mot de passe modifié", "Utilisez-le à votre prochaine connexion.");
+      toast.success(t("settings.changePassword"));
     } catch (err) {
-      toast.error("Modification impossible", errorText(err));
+      toast.error(t("common.error"), errorText(err));
     } finally {
       setSavingPassword(false);
     }
@@ -80,26 +80,42 @@ export function SettingsForm({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title="Profil & paramètres" description={description} />
+      <PageHeader
+        title={t("settings.title")}
+        description={description ?? t("settings.profile")}
+      />
 
       <Panel className="flex flex-wrap items-center gap-4">
         <Avatar name={user.name} className="h-14 w-14 text-base" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-xl font-bold text-ops-ink">{user.name}</p>
-          <p className="truncate text-sm text-ops-ink/50">{user.email}</p>
+          <p className="truncate font-display text-xl font-bold text-ops-ink">
+            {user.name}
+          </p>
+          <p className="truncate text-sm text-ops-ink/50 keep-ltr">{user.email}</p>
         </div>
-        <Badge tone="brand">{ROLE_LABEL[user.role]}</Badge>
+        <Badge tone="brand">{roleLabel(user.role, t)}</Badge>
+      </Panel>
+
+      <Panel>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold text-ops-ink">
+            {t("settings.language")}
+          </h2>
+          <LocaleToggle />
+        </div>
       </Panel>
 
       <Panel>
         <div className="mb-4 flex items-center gap-2">
           <UserRound className="h-4 w-4 text-ops-accent" aria-hidden />
-          <h2 className="font-display text-lg font-bold text-ops-ink">Informations</h2>
+          <h2 className="font-display text-lg font-bold text-ops-ink">
+            {t("settings.profile")}
+          </h2>
         </div>
         <form onSubmit={onSaveProfile} noValidate className="grid gap-4 sm:grid-cols-2">
           <TextField
             name="name"
-            label="Nom"
+            label={t("common.name")}
             defaultValue={user.name}
             autoComplete="name"
             error={profileErrors.name}
@@ -108,14 +124,14 @@ export function SettingsForm({
           <TextField
             name="email"
             type="email"
-            label="Email"
+            label={t("common.email")}
             defaultValue={user.email}
             autoComplete="email"
             error={profileErrors.email}
           />
           <TextField
             name="phone"
-            label="Téléphone"
+            label={t("common.phone")}
             inputMode="numeric"
             defaultValue={user.phone ?? ""}
             autoComplete="tel"
@@ -123,7 +139,7 @@ export function SettingsForm({
           />
           <div className="sm:col-span-2">
             <Button type="submit" icon={Save} loading={savingProfile}>
-              Enregistrer
+              {t("common.save")}
             </Button>
           </div>
         </form>
@@ -132,34 +148,44 @@ export function SettingsForm({
       <Panel>
         <div className="mb-4 flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-ops-accent" aria-hidden />
-          <h2 className="font-display text-lg font-bold text-ops-ink">Mot de passe</h2>
+          <h2 className="font-display text-lg font-bold text-ops-ink">
+            {t("settings.security")}
+          </h2>
         </div>
-        <form onSubmit={onChangePassword} noValidate className="grid gap-4 sm:grid-cols-3">
+        <form
+          onSubmit={onChangePassword}
+          noValidate
+          className="grid gap-4 sm:grid-cols-3"
+        >
           <TextField
             name="current"
             type="password"
-            label="Actuel"
+            label={t("auth.password")}
             autoComplete="current-password"
             error={passwordErrors.current}
           />
           <TextField
             name="next"
             type="password"
-            label="Nouveau"
+            label={t("settings.changePassword")}
             autoComplete="new-password"
-            hint="8 caractères, lettres et chiffres"
             error={passwordErrors.next}
           />
           <TextField
             name="confirm"
             type="password"
-            label="Confirmation"
+            label={t("common.confirm")}
             autoComplete="new-password"
             error={passwordErrors.confirm}
           />
           <div className="sm:col-span-3">
-            <Button type="submit" variant="secondary" icon={KeyRound} loading={savingPassword}>
-              Changer le mot de passe
+            <Button
+              type="submit"
+              variant="secondary"
+              icon={KeyRound}
+              loading={savingPassword}
+            >
+              {t("settings.changePassword")}
             </Button>
           </div>
         </form>

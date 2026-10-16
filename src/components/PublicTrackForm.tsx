@@ -4,7 +4,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PackageSearch } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { STATUS_META, type StatusKey } from "@/lib/status-meta";
+import { useStatusLabel } from "@/i18n/hooks";
+import { useT } from "@/i18n/locale-context";
 import { trackingStepsFor } from "@/lib/tracking-lifecycle";
 import { EmptyState, LoadingBlock } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -16,10 +17,12 @@ type TrackResult = {
   city: string;
   governorate: string;
   updatedAt: string;
-  timeline?: Array<{ at: string; label: string }>;
+  timeline?: Array<{ at: string; label: string; status?: string | null }>;
 };
 
 export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) {
+  const t = useT();
+  const statusLabelFn = useStatusLabel();
   const [code, setCode] = useState(initialCode);
   const [result, setResult] = useState<TrackResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
       );
       setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Introuvable");
+      setError(err instanceof Error ? err.message : t("track.notFound"));
     } finally {
       setLoading(false);
     }
@@ -47,6 +50,7 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
     if (initialCode.trim()) {
       lookup(initialCode).catch(() => undefined);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial only
   }, [initialCode]);
 
   async function onSubmit(e: FormEvent) {
@@ -54,15 +58,13 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
     await lookup(code);
   }
 
-  const statusLabel =
-    result && STATUS_META[result.status as StatusKey]
-      ? STATUS_META[result.status as StatusKey].label
-      : result?.status;
-
   const trackSteps = useMemo(
     () => (result ? trackingStepsFor(result.status) : []),
     [result],
   );
+
+  const delivered =
+    result?.status === "LIVRES" || result?.status === "LIVRES_PAYES";
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-6">
@@ -71,25 +73,26 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
         className="rounded-2xl border border-cream bg-surface p-4 shadow-soft sm:p-5"
       >
         <label className="block text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
-          Code colis
+          {t("track.codeLabel")}
         </label>
         <div className="mt-2 flex gap-2">
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="ex. UMB-1042"
-            className="flex-1 rounded-xl border border-cream-soft bg-cream-soft/30 px-4 py-3 text-sm outline-none ring-brand focus:ring-2"
+            placeholder={t("track.codePlaceholder")}
+            className="keep-ltr flex-1 rounded-xl border border-cream-soft bg-cream-soft/30 px-4 py-3 text-sm outline-none ring-brand focus:ring-2"
+            dir="ltr"
           />
           <button
             type="submit"
             disabled={loading}
             className="rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-soft disabled:opacity-50"
           >
-            {loading ? "…" : "Suivre"}
+            {loading ? "…" : t("track.submit")}
           </button>
         </div>
         <p className="mt-2 text-left text-[11px] text-ink-muted">
-          Démo : essayez{" "}
+          {t("track.demoHint")}{" "}
           <button
             type="button"
             className="font-semibold text-brand hover:underline"
@@ -103,15 +106,15 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
         </p>
       </form>
 
-      {loading ? <LoadingBlock label="Recherche du colis…" /> : null}
+      {loading ? <LoadingBlock label={t("track.searching")} /> : null}
 
       {error ? (
         <EmptyState
-          title="Colis introuvable"
+          title={t("track.notFoundTitle")}
           description={error}
           action={
             <Link href="/contact" className="text-sm font-semibold text-brand">
-              Contacter le support
+              {t("auth.contactSupport")}
             </Link>
           }
         />
@@ -125,12 +128,17 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
                 <PackageSearch className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <p className="keep-ltr text-xs font-semibold uppercase tracking-wide text-ink-muted">
                   {result.code}
                 </p>
                 <h2 className="font-display text-2xl font-bold text-ink">
-                  {statusLabel}
+                  {statusLabelFn(result.status)}
                 </h2>
+                {delivered ? (
+                  <p className="mt-1 text-sm font-semibold text-emerald-700">
+                    {t("track.deliveredBanner")}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -167,17 +175,17 @@ export function PublicTrackForm({ initialCode = "" }: { initialCode?: string }) 
 
             <dl className="mt-6 space-y-3 text-sm">
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Destinataire</dt>
+                <dt className="text-ink-muted">{t("track.recipient")}</dt>
                 <dd className="font-medium text-ink">{result.recipientName}</dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Ville</dt>
+                <dt className="text-ink-muted">{t("track.city")}</dt>
                 <dd className="font-medium text-ink">
                   {result.city}, {result.governorate}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Mis à jour</dt>
+                <dt className="text-ink-muted">{t("track.updated")}</dt>
                 <dd className="font-medium text-ink">
                   {new Date(result.updatedAt).toLocaleString("fr-TN")}
                 </dd>

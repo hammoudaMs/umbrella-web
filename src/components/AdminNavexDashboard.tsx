@@ -1,27 +1,40 @@
 "use client";
 
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { MobileOpsDashboard } from "@/components/MobileOpsDashboard";
 import { OpsDashboardLoader } from "@/components/OpsDashboardLoader";
-import { ParcelsManager } from "@/components/ParcelsManager";
+import { EmptyState, ErrorBanner } from "@/components/ui";
 import { apiFetch, type StatusCard } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import {
+  PARCEL_CREATED_EVENT,
+  useOptionalPortalCreateParcel,
+} from "@/lib/portal-create-parcel";
 import { buildOpsStatusKpis } from "@/lib/ops-status-kpis";
+import { useT } from "@/i18n/locale-context";
 import { portalHomeFor } from "@/lib/portal-home";
 import type { AppRole } from "@/lib/roles";
 import type { StatusCategory } from "@/lib/status-categories";
 import { isStatusCategoryIcon } from "@/lib/status-categories";
+import { LayoutDashboard } from "lucide-react";
+import { toAmount, type Payment, type Ticket } from "@/lib/domain";
 
 gsap.registerPlugin(useGSAP);
+
+const PAYMENT_ACTIVE: Payment["status"][] = [
+  "EN_DEMANDE",
+  "VALIDE_FINANCE",
+  "VALIDE_CHEF",
+  "VALIDE_EXPERT",
+  "APPROUVE",
+  "PAYE",
+];
+
+function normalizePaymentStatus(status: Payment["status"]): Payment["status"] {
+  return status === "APPROUVE" ? "VALIDE_FINANCE" : status;
+}
 
 type AnalyticsPayload = {
   kpis: {
@@ -103,16 +116,20 @@ export function AdminNavexDashboard({
   role: AppRole;
 }) {
   const { session } = useAuth();
+  const t = useT();
   const root = useRef<HTMLDivElement>(null);
-  const home = useMemo(() => portalHomeFor(role), [role]);
+  const home = useMemo(() => portalHomeFor(role, t), [role, t]);
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
   const [statusCards, setStatusCards] = useState<StatusCard[]>([]);
   const [categories, setCategories] = useState<StatusCategory[]>([]);
   const [parcels, setParcels] = useState<RecentParcel[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [createOpen, setCreateOpen] = useState(false);
+  const createParcel = useOptionalPortalCreateParcel();
   const token = session?.accessToken;
+  const isExpediteurHome = home.asideMode === "expediteur";
 
   const loadDashboard = useCallback(() => {
     if (!token) return;
@@ -126,21 +143,35 @@ export function AdminNavexDashboard({
       apiFetch<StatusCategory[]>("/status-categories", { token }).catch(
         () => [] as StatusCategory[],
       ),
+      isExpediteurHome
+        ? apiFetch<Payment[]>("/payments", { token }).catch(() => [] as Payment[])
+        : Promise.resolve([] as Payment[]),
+      isExpediteurHome
+        ? apiFetch<Ticket[]>("/tickets", { token }).catch(() => [] as Ticket[])
+        : Promise.resolve([] as Ticket[]),
     ])
-      .then(([counts, stats, list, cats]) => {
+      .then(([counts, stats, list, cats, paymentList, ticketList]) => {
         setStatusCards(counts);
         setAnalytics(stats ?? emptyAnalytics());
         setParcels(list);
         setCategories(
           cats.filter((c) => isStatusCategoryIcon(String(c.icon))),
         );
+        setPayments(paymentList);
+        setTickets(ticketList);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, isExpediteurHome]);
 
   useEffect(() => {
     loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    const onCreated = () => loadDashboard();
+    window.addEventListener(PARCEL_CREATED_EVENT, onCreated);
+    return () => window.removeEventListener(PARCEL_CREATED_EVENT, onCreated);
   }, [loadDashboard]);
 
   const recent = useMemo(() => parcels.slice(0, 12), [parcels]);
@@ -155,6 +186,45 @@ export function AdminNavexDashboard({
         .slice(0, 8),
     [parcels],
   );
+
+  const expediteurAside = useMemo(() => {
+    if (!isExpediteurHome) return null;
+    const requested = new Set(
+      payments
+        .filter((p) => PAYMENT_ACTIVE.includes(normalizePaymentStatus(p.status)))
+        .flatMap((p) => p.items.map((i) => i.parcel.id)),
+    );
+    const eligible = parcels.filter(
+      (p) =>
+        (p.status === "LIVRES" || p.status === "LIVRES_PAYES") &&
+        !requested.has(p.id),
+    );
+    const eligibleAmount = eligible.reduce((s, p) => s + toAmount(p.price), 0);
+    const returnCount = parcels.filter((p) =>
+      ["RETOUR_DEPOT", "RETOUR_EXPEDITEURS", "RETOUR_RECU"].includes(p.status),
+    ).length;
+    const openAll = tickets.filter((t) => t.status === "EN_COURS");
+    const enDemande = payments
+      .filter((p) => {
+        const s = normalizePaymentStatus(p.status);
+        return (
+          s === "EN_DEMANDE" ||
+          s === "VALIDE_FINANCE" ||
+          s === "VALIDE_CHEF" ||
+          s === "VALIDE_EXPERT"
+        );
+      })
+      .reduce((s, p) => s + toAmount(p.amount), 0);
+    return {
+      eligibleCount: eligible.length,
+      eligibleAmount,
+      returnCount,
+      openTicketCount: openAll.length,
+      openTickets: openAll.slice(0, 5),
+      disponible: analytics?.soldes?.disponible ?? 0,
+      enDemande,
+    };
+  }, [analytics?.soldes?.disponible, isExpediteurHome, parcels, payments, tickets]);
 
   const statusKpis = useMemo(() => {
     const countsByStatus = new Map(
@@ -212,14 +282,31 @@ export function AdminNavexDashboard({
     home.shortcuts.some((s) => s.action === "create-parcel");
 
   return (
-    <div ref={root}>
+    <div ref={root} className="space-y-4">
       {error ? (
-        <p className="mb-4 rounded-xl border border-[#E11D48]/40 bg-[#E11D48]/10 px-4 py-3 text-center text-sm font-medium text-[#fb7185]">
-          {error}
-        </p>
+        <ErrorBanner message={error} onRetry={() => loadDashboard()} />
       ) : null}
 
       {loading ? <OpsDashboardLoader /> : null}
+
+      {!loading && !error && !kpis ? (
+        <EmptyState
+          icon={LayoutDashboard}
+          title={t("home.emptyDashboardTitle")}
+          description={t("home.emptyDashboardBody")}
+          action={
+            canCreateOnHome ? (
+              <button
+                type="button"
+                className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+                onClick={() => createParcel?.openCreateParcel()}
+              >
+                {home.primaryLabel}
+              </button>
+            ) : undefined
+          }
+        />
+      ) : null}
 
       {!loading && !error && kpis ? (
         <MobileOpsDashboard
@@ -237,22 +324,13 @@ export function AdminNavexDashboard({
           recent={recent}
           returns={returns}
           deliveredRecent={deliveredRecent}
+          expediteurAside={expediteurAside}
           onCreateParcel={
-            canCreateOnHome ? () => setCreateOpen(true) : undefined
+            canCreateOnHome
+              ? () => createParcel?.openCreateParcel()
+              : undefined
           }
         />
-      ) : null}
-
-      {canCreateOnHome ? (
-        <Suspense fallback={null}>
-          <ParcelsManager
-            canCreate
-            createOnly
-            createOpen={createOpen}
-            onCreateOpenChange={setCreateOpen}
-            onCreated={() => loadDashboard()}
-          />
-        </Suspense>
       ) : null}
     </div>
   );
