@@ -20,23 +20,17 @@ type LogoDot = {
   size: "sm" | "md" | "lg";
 };
 
-/** Brand canopy geometry — matches /logo-umbrella.png (front-top view). */
+/** Full top-down umbrella — centered on Tunisia map plate. */
 const CANOPY = {
-  tipX: 54,
-  tipY: 26,
-  /** Half-width at hem */
-  halfW: 16,
-  /** Depth tip → hem */
-  depth: 20,
-  panels: 4,
+  cx: 52,
+  cy: 42,
+  rx: 24,
+  ry: 19,
+  segments: 6,
 } as const;
 
-/**
- * Pointillist Umbrella Express canopy (icon only — no circular “corp” mark).
- * Alternating cream / red gores, scalloped hem, light rim highlight.
- */
 function buildUmbrellaLogoDots(): LogoDot[] {
-  const { tipX, tipY, halfW, depth, panels } = CANOPY;
+  const { cx, cy, rx, ry, segments } = CANOPY;
   const dots: LogoDot[] = [];
   let n = 0;
 
@@ -49,92 +43,60 @@ function buildUmbrellaLogoDots(): LogoDot[] {
     dots.push({ id: `d-${n++}`, x, y, tone, size });
   };
 
-  /** Hem X for panel edge index 0..panels (scalloped). */
-  const hemX = (edge: number) => {
-    const t = edge / panels;
-    return tipX - halfW + t * halfW * 2;
-  };
+  // Center tip
+  push(cx, cy, "red", "lg");
 
-  /** Hem Y with scallop tips (brand logo bottom points). */
-  const hemY = (edge: number) => {
-    const t = edge / panels;
-    const scallop = Math.sin(t * Math.PI * panels) * 1.6;
-    return tipY + depth + scallop;
-  };
+  for (let s = 0; s < segments; s += 1) {
+    const a0 = (s / segments) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((s + 1) / segments) * Math.PI * 2 - Math.PI / 2;
+    const panelTone: "red" | "light" = s % 2 === 0 ? "light" : "red";
 
-  // Ferrule tip
-  push(tipX, tipY, "red", "md");
-
-  for (let p = 0; p < panels; p += 1) {
-    const tone: "red" | "light" = p % 2 === 0 ? "light" : "red";
-    const x0 = hemX(p);
-    const x1 = hemX(p + 1);
-    const y0 = hemY(p);
-    const y1 = hemY(p + 1);
-
-    // Dense fill: rows from tip → hem
-    for (let row = 1; row <= 10; row += 1) {
-      const u = row / 10;
-      const cols = 2 + Math.floor(u * 4);
-      for (let c = 0; c <= cols; c += 1) {
-        const v = c / cols;
-        // Quad lerp tip→hem edges
-        const lx = tipX + (x0 - tipX) * u;
-        const ly = tipY + (y0 - tipY) * u;
-        const rx = tipX + (x1 - tipX) * u;
-        const ry = tipY + (y1 - tipY) * u;
-        const x = lx + (rx - lx) * v;
-        const y = ly + (ry - ly) * v;
-        // Slight dome bulge
-        const bulge = Math.sin(u * Math.PI) * (1 - Math.abs(v - 0.5) * 1.2) * 1.1;
-        push(x, y - bulge, tone, u > 0.85 ? "md" : "sm");
+    for (let r = 0.22; r <= 1; r += 0.13) {
+      const steps = r > 0.65 ? 5 : 3;
+      for (let i = 1; i < steps; i += 1) {
+        const t = i / steps;
+        const a = a0 + (a1 - a0) * t;
+        push(
+          cx + Math.cos(a) * rx * r,
+          cy + Math.sin(a) * ry * r,
+          panelTone,
+          r > 0.85 ? "md" : "sm",
+        );
       }
-    }
-
-    // Seam ridge (cream highlight between panels)
-    for (let row = 1; row <= 9; row += 1) {
-      const u = row / 9;
+      // Seam ridge (light)
       push(
-        tipX + (x0 - tipX) * u,
-        tipY + (y0 - tipY) * u - Math.sin(u * Math.PI) * 0.6,
+        cx + Math.cos(a0) * rx * r,
+        cy + Math.sin(a0) * ry * r,
         "light",
         "sm",
       );
     }
-
-    // Scallop tip on hem (brand “points”)
-    push((x0 + x1) / 2, (y0 + y1) / 2 + 0.4, tone, "md");
   }
 
-  // Gloss arc on top-left of canopy (logo highlight)
-  for (let i = 0; i <= 8; i += 1) {
-    const t = i / 8;
-    const a = Math.PI * 0.95 + t * Math.PI * 0.55;
-    const r = halfW * (0.55 + t * 0.2);
+  // Inner highlight ring (stays inside canopy — no alone outer dots)
+  for (let i = 0; i < 10; i += 1) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
     push(
-      tipX + Math.cos(a) * r * 0.95,
-      tipY + depth * 0.22 + Math.sin(a) * r * 0.35,
+      cx + Math.cos(a) * rx * 0.38,
+      cy + Math.sin(a) * ry * 0.38,
       "light",
-      i === 0 || i === 8 ? "md" : "sm",
+      "sm",
     );
   }
 
   return dots;
 }
 
-/** Panel seams tip → hem (logo structure, not a full wheel). */
 function buildRibLinks(): Array<{ x1: number; y1: number; x2: number; y2: number }> {
-  const { tipX, tipY, halfW, depth, panels } = CANOPY;
+  const { cx, cy, rx, ry, segments } = CANOPY;
   const ribs: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
-  for (let e = 0; e <= panels; e += 1) {
-    const t = e / panels;
-    const x = tipX - halfW + t * halfW * 2;
-    const scallop = Math.sin(t * Math.PI * panels) * 1.6;
+  for (let s = 0; s < segments; s += 1) {
+    const a = (s / segments) * Math.PI * 2 - Math.PI / 2;
     ribs.push({
-      x1: tipX,
-      y1: tipY,
-      x2: x,
-      y2: tipY + depth + scallop,
+      x1: cx,
+      y1: cy,
+      x2: cx + Math.cos(a) * rx,
+      y2: cy + Math.sin(a) * ry,
     });
   }
   return ribs;
@@ -162,10 +124,12 @@ export function LandingCoverage() {
       if (reduce) {
         gsap.set(
           scope.querySelectorAll(
-            ".cov-copy, .cov-foot, .cov-stage, .cov-dot, .cov-letter, .cov-reflect, .cov-hud, .cov-rib, .cov-packet",
+            ".cov-copy, .cov-foot, .cov-stage, .cov-dot, .cov-letter, .cov-signal, .cov-hud, .cov-rib, .cov-packet, .cov-map",
           ),
           { clearProps: "all", autoAlpha: 1, y: 0, scale: 1 },
         );
+        gsap.set(".cov-scan", { autoAlpha: 0 });
+        gsap.set(".cov-signal-courier", { left: "100%", autoAlpha: 0 });
         return;
       }
 
@@ -174,11 +138,26 @@ export function LandingCoverage() {
       gsap.set(".cov-stage", { autoAlpha: 0, scale: 0.96 });
       gsap.set(".cov-dot", { autoAlpha: 0, scale: 0.2 });
       gsap.set(".cov-letter", { autoAlpha: 0, y: 14, rotateX: -40 });
-      gsap.set(".cov-reflect", { autoAlpha: 0 });
+      gsap.set(".cov-signal", { autoAlpha: 0, y: 8 });
+      gsap.set(".cov-signal-node", { scale: 0.6, opacity: 0.35 });
+      gsap.set(".cov-signal-courier", {
+        left: "0%",
+        xPercent: -50,
+        yPercent: -50,
+        top: "50%",
+        autoAlpha: 0,
+        scale: 0.8,
+      });
       gsap.set(".cov-hud", { autoAlpha: 0, y: -8 });
       gsap.set(".cov-rib", { strokeDashoffset: 80 });
-      gsap.set(".cov-scan", { yPercent: -120, autoAlpha: 0 });
+      gsap.set(".cov-scan", { top: "0%", yPercent: -50, autoAlpha: 0 });
       gsap.set(".cov-grid", { autoAlpha: 0 });
+      gsap.set(".cov-map", { filter: "brightness(1) saturate(1)" });
+      gsap.set(".cov-word", { letterSpacing: "0.32em" });
+      gsap.set(".cov-letter-fill", {
+        transformOrigin: "50% 80%",
+        transformPerspective: 600,
+      });
 
       const enter = gsap.timeline({
         defaults: { ease: "power3.out" },
@@ -217,16 +196,161 @@ export function LandingCoverage() {
           },
           0.85,
         )
-        .to(".cov-reflect", { autoAlpha: 1, duration: 0.55 }, 1.15)
+        .to(".cov-signal", { autoAlpha: 1, y: 0, duration: 0.5 }, 1.1)
+        .to(
+          ".cov-signal-node",
+          { scale: 1, opacity: 1, duration: 0.35, stagger: 0.12, ease: "power2.out" },
+          1.2,
+        )
         .to(".cov-foot", { autoAlpha: 1, y: 0, duration: 0.5 }, 1.05);
 
-      gsap.to(".cov-scan", {
-        yPercent: 120,
-        autoAlpha: 0.7,
-        duration: 2.8,
-        ease: "none",
+      const runCourier = (duration = 2.1) =>
+        gsap
+          .timeline()
+          .set(".cov-signal-courier", {
+            left: "0%",
+            xPercent: -50,
+            autoAlpha: 0,
+            scale: 0.75,
+          })
+          .to(".cov-signal-courier", {
+            autoAlpha: 1,
+            scale: 1,
+            duration: 0.18,
+            ease: "power2.out",
+          })
+          .to(
+            ".cov-signal-courier",
+            { left: "100%", duration, ease: "power1.inOut" },
+            0,
+          )
+          .to(
+            ".cov-signal-courier",
+            {
+              autoAlpha: 0,
+              scale: 0.75,
+              duration: 0.2,
+              ease: "power2.in",
+            },
+            "-=0.2",
+          )
+          .to(
+            ".cov-signal-node-sud",
+            {
+              scale: 1.45,
+              duration: 0.2,
+              ease: "power2.out",
+              yoyo: true,
+              repeat: 1,
+            },
+            "-=0.12",
+          );
+
+      const courierLoop = gsap.timeline({
         repeat: -1,
-        repeatDelay: 1.2,
+        repeatDelay: 0.9,
+        scrollTrigger: {
+          trigger: scope,
+          start: "top 75%",
+          toggleActions: "play pause play pause",
+        },
+      });
+      courierLoop.add(runCourier(2.15), 1.45);
+
+      const pulseTunisia = () => {
+        const fills = scope.querySelectorAll<HTMLElement>(".cov-letter-fill");
+        const outlines = scope.querySelectorAll<HTMLElement>(".cov-letter-outline");
+
+        gsap
+          .timeline()
+          .to(".cov-map", {
+            filter: "brightness(1.45) saturate(1.3)",
+            scale: 1.03,
+            transformOrigin: "50% 50%",
+            duration: 0.32,
+            ease: "power2.out",
+          })
+          .to(
+            ".cov-dot",
+            {
+              scale: 1.28,
+              duration: 0.24,
+              stagger: { each: 0.004, from: "center" },
+              ease: "power2.out",
+            },
+            0,
+          )
+          .fromTo(
+            fills,
+            {
+              y: 10,
+              rotateX: -55,
+              scale: 0.86,
+              color: "#991211",
+              textShadow: "0 0 0 rgba(255,90,70,0)",
+            },
+            {
+              y: 0,
+              rotateX: 0,
+              scale: 1.08,
+              color: "#F0E6DC",
+              textShadow: "0 0 18px rgba(255,90,70,0.75)",
+              duration: 0.42,
+              stagger: 0.045,
+              ease: "back.out(1.7)",
+            },
+            0,
+          )
+          .fromTo(
+            outlines,
+            { y: 8, autoAlpha: 0.35 },
+            {
+              y: 0,
+              autoAlpha: 1,
+              duration: 0.38,
+              stagger: 0.045,
+              ease: "power2.out",
+            },
+            0.02,
+          )
+          .to(
+            ".cov-word",
+            { letterSpacing: "0.42em", duration: 0.35, ease: "power2.out" },
+            0,
+          )
+          .to(
+            fills,
+            {
+              scale: 1,
+              color: "#c24a44",
+              textShadow: "0 0 0 rgba(255,90,70,0)",
+              duration: 0.55,
+              stagger: 0.03,
+              ease: "power3.out",
+            },
+            0.45,
+          )
+          .to(
+            ".cov-word",
+            { letterSpacing: "0.32em", duration: 0.55, ease: "power3.out" },
+            0.45,
+          )
+          .to(".cov-map", {
+            filter: "brightness(1) saturate(1)",
+            scale: 1,
+            duration: 0.6,
+            ease: "power3.out",
+          }, 0.4)
+          .to(
+            ".cov-dot",
+            { scale: 1, duration: 0.45, stagger: 0.003, ease: "power2.inOut" },
+            0.4,
+          );
+      };
+
+      const scanLoop = gsap.timeline({
+        repeat: -1,
+        repeatDelay: 1.1,
         scrollTrigger: {
           trigger: scope,
           start: "top 75%",
@@ -234,9 +358,32 @@ export function LandingCoverage() {
         },
       });
 
+      scanLoop
+        .set(".cov-scan", { top: "0%", yPercent: -50, autoAlpha: 0 })
+        .to(".cov-scan", {
+          autoAlpha: 0.85,
+          duration: 0.25,
+          ease: "power1.out",
+        })
+        .to(
+          ".cov-scan",
+          {
+            top: "100%",
+            duration: 2.6,
+            ease: "none",
+          },
+          0,
+        )
+        .to(
+          ".cov-scan",
+          { autoAlpha: 0, duration: 0.28, ease: "power1.in" },
+          "-=0.28",
+        )
+        .call(pulseTunisia);
+
       gsap.to(".cov-grid-drift", {
-        backgroundPosition: "40px 40px",
-        duration: 18,
+        backgroundPosition: "0px 72px",
+        duration: 14,
         ease: "none",
         repeat: -1,
       });
@@ -353,25 +500,20 @@ export function LandingCoverage() {
       aria-label={t("landing.coverageAria")}
     >
       <div
-        className="cov-grid cov-grid-drift pointer-events-none absolute inset-0 opacity-[0.12]"
+        className="cov-grid cov-grid-drift pointer-events-none absolute inset-0 z-0 h-full min-h-full w-full opacity-[0.18]"
         aria-hidden
         style={{
           backgroundImage: `
-            linear-gradient(rgba(153,18,17,0.35) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(153,18,17,0.28) 1px, transparent 1px)
+            linear-gradient(rgba(153,18,17,0.5) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(153,18,17,0.38) 1px, transparent 1px)
           `,
-          backgroundSize: "40px 40px",
-          maskImage:
-            "linear-gradient(to bottom, transparent 0%, black 28%, black 70%, transparent 100%)",
-          WebkitMaskImage:
-            "linear-gradient(to bottom, transparent 0%, black 28%, black 70%, transparent 100%)",
-          transform: "perspective(700px) rotateX(58deg) translateY(18%) scale(1.35)",
-          transformOrigin: "center top",
+          backgroundSize: "36px 36px",
+          backgroundRepeat: "repeat",
         }}
       />
 
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-overlay"
+        className="pointer-events-none absolute inset-0 z-[1] opacity-[0.04] mix-blend-overlay"
         aria-hidden
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
@@ -432,24 +574,25 @@ export function LandingCoverage() {
               <div className="cov-ring-inner absolute inset-[14%] rounded-full border border-dashed border-white/[0.07]" />
             </div>
 
-            <div className="cov-parallax relative aspect-[3/4] w-full">
+            <div className="cov-parallax relative aspect-[3/4] w-full overflow-hidden">
               <Image
-                src="/landing/tunisia-map.png"
+                src="/landing/tunisia-map.png?v=no-hubs"
                 alt={t("landing.coverageImageAlt")}
                 fill
-                className="object-contain object-center"
+                className="cov-map object-contain object-center will-change-transform"
                 sizes="(max-width: 768px) 300px, 380px"
                 priority={false}
                 quality={95}
+                unoptimized
               />
 
               <div
-                className="cov-scan pointer-events-none absolute inset-x-0 top-0 z-[5] h-[18%]"
+                className="cov-scan pointer-events-none absolute inset-x-0 z-[5] h-[16%] min-h-[48px]"
                 aria-hidden
                 style={{
                   background:
-                    "linear-gradient(180deg, transparent 0%, rgba(255,70,60,0.14) 45%, transparent 100%)",
-                  boxShadow: "0 0 24px rgba(153,18,17,0.25)",
+                    "linear-gradient(180deg, transparent 0%, rgba(255,70,60,0.18) 40%, rgba(153,18,17,0.4) 50%, rgba(255,70,60,0.18) 60%, transparent 100%)",
+                  boxShadow: "0 0 28px rgba(153,18,17,0.4)",
                 }}
               />
 
@@ -500,8 +643,8 @@ export function LandingCoverage() {
                     <span
                       className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${SIZE_PX[d.size]} ${
                         isLight
-                          ? "bg-[#E5DBD4] shadow-[0_0_8px_2px_rgba(229,219,212,0.55)]"
-                          : "bg-[#991211] shadow-[0_0_8px_2px_rgba(153,18,17,0.65)]"
+                          ? "bg-[#F0E6DC] shadow-[0_0_10px_3px_rgba(240,230,220,0.7)]"
+                          : "bg-[#991211] shadow-[0_0_9px_2px_rgba(153,18,17,0.75)]"
                       }`}
                     />
                   </div>
@@ -514,37 +657,46 @@ export function LandingCoverage() {
               dir="ltr"
               aria-hidden
             >
-              <p className="relative font-display text-[clamp(1.65rem,5vw,2.35rem)] font-semibold uppercase tracking-[0.32em] text-transparent">
+              <p className="cov-word relative font-display text-[clamp(1.65rem,5vw,2.35rem)] font-semibold uppercase tracking-[0.32em] text-transparent">
                 <span
                   className="absolute inset-0"
                   style={{ WebkitTextStroke: "1px rgba(153,18,17,0.55)" }}
                 >
                   {MENTION.split("").map((ch, i) => (
-                    <span key={`o-${i}`} className="cov-letter inline-block">
+                    <span
+                      key={`o-${i}`}
+                      className="cov-letter cov-letter-outline inline-block"
+                    >
                       {ch}
                     </span>
                   ))}
                 </span>
                 <span className="relative text-[#c24a44]">
                   {MENTION.split("").map((ch, i) => (
-                    <span key={`f-${i}`} className="cov-letter inline-block">
+                    <span
+                      key={`f-${i}`}
+                      className="cov-letter cov-letter-fill inline-block will-change-transform"
+                      style={{ transformStyle: "preserve-3d" }}
+                    >
                       {ch}
                     </span>
                   ))}
                 </span>
               </p>
-              <p
-                className="cov-reflect pointer-events-none mt-0.5 select-none font-display text-[clamp(1.65rem,5vw,2.35rem)] font-semibold uppercase tracking-[0.32em] text-[#991211]/30"
-                style={{
-                  transform: "scaleY(-1)",
-                  maskImage:
-                    "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent 72%)",
-                  WebkitMaskImage:
-                    "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent 72%)",
-                }}
+              <div
+                className="cov-signal mt-3 flex w-full max-w-[220px] flex-col items-center gap-2"
+                aria-hidden
               >
-                {MENTION}
-              </p>
+                <div className="relative h-3 w-full">
+                  <span className="cov-signal-node absolute left-0 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#F0E6DC] shadow-[0_0_8px_rgba(240,230,220,0.7)]" />
+                  <span className="cov-signal-node cov-signal-node-sud absolute right-0 top-1/2 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-[#F0E6DC] shadow-[0_0_8px_rgba(240,230,220,0.7)]" />
+                  <span className="cov-signal-courier absolute top-1/2 h-2 w-2 rounded-full bg-[#991211] shadow-[0_0_12px_3px_rgba(153,18,17,0.85)]" />
+                </div>
+                <p className="flex w-full items-center justify-between font-mono text-[9px] uppercase tracking-[0.28em] text-white/35">
+                  <span>Nord</span>
+                  <span>Sud</span>
+                </p>
+              </div>
             </div>
           </div>
         </div>

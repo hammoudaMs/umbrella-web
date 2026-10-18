@@ -41,8 +41,8 @@ export default function LandingPage() {
       />
 
       <LandingScrollJourney />
-      <LandingWhyChoose />
       <LandingCoverage />
+      <LandingWhyChoose />
       <LandingServices />
       <LandingFaq />
       <LandingContact />
