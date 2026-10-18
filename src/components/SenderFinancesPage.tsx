@@ -350,7 +350,7 @@ export function SenderFinancesPage() {
         <div
           role="tablist"
           aria-label={t("finances.stockLead")}
-          className="grid grid-cols-3 gap-1.5 sm:grid-cols-5 lg:gap-2"
+          className="grid grid-cols-5 gap-1.5 lg:gap-2"
         >
           {filters.map((f) => {
             const active = stage === f.key;
@@ -362,8 +362,7 @@ export function SenderFinancesPage() {
                 aria-selected={active}
                 onClick={() => setStage(f.key)}
                 className={cn(
-                  "flex min-h-[2.75rem] flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-center transition lg:min-h-14 lg:flex-row lg:gap-2 lg:px-3",
-                  f.key === "returns" && "col-span-2 sm:col-span-1",
+                  "flex min-h-[2.75rem] w-full flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-center transition lg:min-h-14 lg:flex-row lg:gap-2 lg:px-3",
                   active
                     ? "border-ops-accent bg-ops-accent text-white"
                     : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
