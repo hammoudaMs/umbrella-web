@@ -658,7 +658,7 @@ export const tn: MessageTree = {
     productName: "المنتج",
     productFallback: "بلا اسم منتج",
     basePriceHint: "المبلغ اللي يتجمّع من الحريف",
-    profitDeliveredHint: "بيع − مصاريف التوصيل",
+    profitDeliveredHint: "بيع − قاعدة − مصاريف التوصيل",
     profitReturnHint: "مصاريف التوصيل + الرجوع",
     profitPendingHint: "يتحسب وقت الإقفال (موصّل / رجوع)",
     badgeReturn: "رجوع",

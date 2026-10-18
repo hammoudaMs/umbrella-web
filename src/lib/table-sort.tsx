@@ -57,8 +57,15 @@ export function useTableSort<T, K extends string>(
       key === "createdAt" ||
         key === "price" ||
         key === "amount" ||
+        key === "sale" ||
+        key === "base" ||
+        key === "cod" ||
+        key === "profit" ||
+        key === "deliveryFee" ||
+        key === "returnFee" ||
         key === "date" ||
-        key.endsWith("At")
+        key.endsWith("At") ||
+        key.endsWith("Fee")
         ? "desc"
         : "asc",
     );

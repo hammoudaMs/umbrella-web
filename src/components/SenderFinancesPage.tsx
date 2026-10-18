@@ -18,7 +18,6 @@ import {
   tableClass,
   tdClass,
   theadClass,
-  thClass,
   trClass,
 } from "@/components/ui";
 import { useT } from "@/i18n/locale-context";
@@ -32,6 +31,7 @@ import {
   returnFeeOf,
   salePriceOf,
 } from "@/lib/sender-finance";
+import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApiQuery } from "@/lib/use-api";
 import { cn } from "@/lib/cn";
 
@@ -44,6 +44,69 @@ type AnalyticsPayload = {
 };
 
 type StageKey = "all" | "prep" | "pipe" | "delivered" | "returns";
+
+type InventoryRow = {
+  id: number;
+  code: string;
+  status: string;
+  city: string;
+  governorate: string;
+  recipient: string;
+  product: string | null;
+  sale: number;
+  base: number;
+  profit: number | null;
+  inStock: boolean;
+};
+
+type InventorySortKey =
+  | "code"
+  | "product"
+  | "place"
+  | "status"
+  | "sale"
+  | "base"
+  | "profit";
+
+type LedgerRow = {
+  id: number;
+  code: string;
+  status: string;
+  sale: number;
+  cod: number;
+  deliveryFee: number;
+  returnFee: number;
+  profit: number | null;
+};
+
+type LedgerSortKey =
+  | "code"
+  | "status"
+  | "sale"
+  | "cod"
+  | "deliveryFee"
+  | "returnFee"
+  | "profit";
+
+const INVENTORY_SORT = {
+  code: (r: InventoryRow) => r.code,
+  product: (r: InventoryRow) => r.product ?? "",
+  place: (r: InventoryRow) => `${r.city ?? ""} ${r.governorate ?? ""}`,
+  status: (r: InventoryRow) => r.status,
+  sale: (r: InventoryRow) => r.sale,
+  base: (r: InventoryRow) => r.base,
+  profit: (r: InventoryRow) => r.profit ?? Number.NEGATIVE_INFINITY,
+} as const;
+
+const LEDGER_SORT = {
+  code: (r: LedgerRow) => r.code,
+  status: (r: LedgerRow) => r.status,
+  sale: (r: LedgerRow) => r.sale,
+  cod: (r: LedgerRow) => r.cod,
+  deliveryFee: (r: LedgerRow) => r.deliveryFee,
+  returnFee: (r: LedgerRow) => r.returnFee,
+  profit: (r: LedgerRow) => r.profit ?? Number.NEGATIVE_INFINITY,
+} as const;
 
 const PREP = new Set(["EN_ATTENTE", "A_ENLEVER", "ENLEVES"]);
 const PIPE = new Set([
@@ -140,10 +203,9 @@ export function SenderFinancesPage() {
     },
   ];
 
-  const inventory = useMemo(() => {
+  const inventory = useMemo((): InventoryRow[] => {
     return list
       .filter((p) => (stage === "all" ? true : stageOf(p.status) === stage))
-      .slice(0, 100)
       .map((p) => {
         const m = moneyOf(p);
         return {
@@ -153,8 +215,7 @@ export function SenderFinancesPage() {
           city: p.city,
           governorate: p.governorate,
           recipient: p.recipientName,
-          product:
-            p.designation?.trim() || p.notes?.trim() || null,
+          product: p.designation?.trim() || p.notes?.trim() || null,
           sale: salePriceOf(m),
           base: m.price,
           profit: parcelProfitOf(m),
@@ -163,10 +224,22 @@ export function SenderFinancesPage() {
       });
   }, [list, stage]);
 
-  const ledgerRows = useMemo(() => {
+  const {
+    sorted: sortedInventory,
+    sortKey: inventorySortKey,
+    sortDir: inventorySortDir,
+    toggleSort: toggleInventorySort,
+  } = useTableSort<InventoryRow, InventorySortKey>(
+    inventory,
+    INVENTORY_SORT,
+    "code",
+    "asc",
+  );
+  const inventoryRows = sortedInventory.slice(0, 100);
+
+  const ledgerRows = useMemo((): LedgerRow[] => {
     return list
       .filter((p) => isDeliveredStatus(p.status) || isReturnStatus(p.status))
-      .slice(0, 60)
       .map((p) => {
         const m = moneyOf(p);
         return {
@@ -182,29 +255,41 @@ export function SenderFinancesPage() {
       });
   }, [list]);
 
+  const {
+    sorted: sortedLedger,
+    sortKey: ledgerSortKey,
+    sortDir: ledgerSortDir,
+    toggleSort: toggleLedgerSort,
+  } = useTableSort<LedgerRow, LedgerSortKey>(
+    ledgerRows,
+    LEDGER_SORT,
+    "code",
+    "asc",
+  );
+  const ledgerVisible = sortedLedger.slice(0, 60);
+
   const error = analytics.error || parcels.error;
   const loading = analytics.loading || parcels.loading;
   const margin = soldes?.profit ?? 0;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 pb-8">
-      {/* Compact title + primary figure */}
-      <header className="flex items-end justify-between gap-4">
+    <div className="w-full space-y-5 pb-8 lg:space-y-6">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <h1 className="font-display text-xl font-extrabold tracking-tight text-ops-ink">
+          <h1 className="font-display text-xl font-extrabold tracking-tight text-ops-ink lg:text-3xl">
             {t("finances.title")}
           </h1>
-          <p className="mt-0.5 text-xs text-ops-ink/40">
+          <p className="mt-0.5 text-xs text-ops-ink/40 lg:text-sm">
             {loading
               ? "…"
               : t("finances.openStockHint", { count: counts.open })}
           </p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-left sm:text-right">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ops-ink/35">
             {t("finances.openStockValue")}
           </p>
-          <p className="font-display text-2xl font-extrabold tabular-nums leading-none text-ops-ink">
+          <p className="font-display text-2xl font-extrabold tabular-nums leading-none text-ops-ink lg:text-3xl">
             {loading ? "…" : formatTnd(counts.openValue)}
           </p>
         </div>
@@ -220,34 +305,31 @@ export function SenderFinancesPage() {
         />
       ) : null}
 
-      {/* Compact metrics strip — not a tall card */}
-      <dl className="grid grid-cols-3 divide-x divide-ops-card rounded-xl border border-ops-card bg-ops-surface">
-        <div className="px-3 py-3 text-center">
-          <dt className="text-[10px] font-medium text-ops-ink/40">
+      <dl className="grid grid-cols-3 divide-x divide-ops-card rounded-xl border border-ops-card bg-ops-surface lg:grid-cols-3">
+        <div className="px-3 py-3 text-center lg:px-6 lg:py-4 lg:text-left">
+          <dt className="text-[10px] font-medium text-ops-ink/40 lg:text-xs">
             {t("finances.haveStock")}
           </dt>
-          <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+          <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400 lg:text-2xl">
             {loading ? "…" : counts.open}
           </dd>
         </div>
-        <div className="px-3 py-3 text-center">
-          <dt className="text-[10px] font-medium text-ops-ink/40">
+        <div className="px-3 py-3 text-center lg:px-6 lg:py-4 lg:text-left">
+          <dt className="text-[10px] font-medium text-ops-ink/40 lg:text-xs">
             {t("finances.notInStock")}
           </dt>
-          <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-ops-ink">
+          <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-ops-ink lg:text-2xl">
             {loading ? "…" : counts.closed}
           </dd>
         </div>
-        <div className="px-3 py-3 text-center">
-          <dt className="text-[10px] font-medium text-ops-ink/40">
+        <div className="px-3 py-3 text-center lg:px-6 lg:py-4 lg:text-left">
+          <dt className="text-[10px] font-medium text-ops-ink/40 lg:text-xs">
             {t("finances.margin")}
           </dt>
           <dd
             className={cn(
-              "mt-0.5 font-display text-lg font-bold tabular-nums",
-              margin >= 0
-                ? "text-ops-ink"
-                : "text-ops-accent",
+              "mt-0.5 font-display text-lg font-bold tabular-nums lg:text-2xl",
+              margin >= 0 ? "text-ops-ink" : "text-ops-accent",
             )}
           >
             {loading ? "…" : formatTnd(margin)}
@@ -255,15 +337,20 @@ export function SenderFinancesPage() {
         </div>
       </dl>
 
-      {/* Stage filters — wrap, no horizontal scroll */}
       <section className="space-y-2.5">
-        <p className="text-xs font-medium text-ops-ink/40">
-          {t("finances.stockLead")}
-        </p>
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-ops-ink lg:text-base">
+            {t("finances.inventoryTitle")}
+            <span className="ms-1.5 font-normal text-ops-ink/35">
+              ({inventory.length})
+            </span>
+          </h2>
+          <p className="text-xs text-ops-ink/40">{t("finances.stockLead")}</p>
+        </div>
         <div
           role="tablist"
           aria-label={t("finances.stockLead")}
-          className="grid grid-cols-3 gap-1.5 sm:grid-cols-5"
+          className="grid grid-cols-3 gap-1.5 sm:grid-cols-5 lg:gap-2"
         >
           {filters.map((f) => {
             const active = stage === f.key;
@@ -275,20 +362,22 @@ export function SenderFinancesPage() {
                 aria-selected={active}
                 onClick={() => setStage(f.key)}
                 className={cn(
-                  "flex min-h-[2.75rem] flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-center transition",
+                  "flex min-h-[2.75rem] flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-center transition lg:min-h-14 lg:flex-row lg:gap-2 lg:px-3",
                   f.key === "returns" && "col-span-2 sm:col-span-1",
                   active
                     ? "border-ops-accent bg-ops-accent text-white"
-                    : "border-ops-card bg-ops-surface text-ops-ink/70 active:bg-ops-page",
+                    : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
                 )}
               >
-                <span className="max-w-full truncate text-[11px] font-semibold leading-tight">
+                <span className="max-w-full truncate text-[11px] font-semibold leading-tight lg:text-sm">
                   {f.label}
                 </span>
                 <span
                   className={cn(
-                    "text-sm font-bold tabular-nums leading-none",
-                    active ? "text-white" : "text-ops-ink",
+                    "text-sm font-bold tabular-nums leading-none lg:rounded-md lg:px-1.5 lg:py-0.5 lg:text-xs",
+                    active
+                      ? "text-white lg:bg-white/20"
+                      : "text-ops-ink lg:bg-ops-ink/[0.06] lg:text-ops-ink/60",
                   )}
                 >
                   {loading ? "…" : f.count}
@@ -299,16 +388,7 @@ export function SenderFinancesPage() {
         </div>
       </section>
 
-      {/* Inventory — cards on phone, table on md+ */}
       <section className="space-y-2.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ops-ink">
-            {t("finances.inventoryTitle")}
-            <span className="ms-1.5 font-normal text-ops-ink/35">
-              ({inventory.length})
-            </span>
-          </h2>
-        </div>
 
         {inventory.length === 0 ? (
           <EmptyState
@@ -319,7 +399,7 @@ export function SenderFinancesPage() {
         ) : (
           <>
             <ul className="space-y-2 md:hidden">
-              {inventory.map((r) => (
+              {inventoryRows.map((r) => (
                 <li key={r.id}>
                   <Link
                     href={`/expediteur/parcels/${r.id}`}
@@ -382,17 +462,65 @@ export function SenderFinancesPage() {
               <table className={tableClass}>
                 <thead className={theadClass}>
                   <tr>
-                    <th className={thClass}>{t("finances.colParcel")}</th>
-                    <th className={thClass}>{t("finances.productName")}</th>
-                    <th className={thClass}>{t("finances.colPlace")}</th>
-                    <th className={thClass}>{t("common.status")}</th>
-                    <th className={`${thClass} text-right`}>
-                      {t("finances.colSale")}
-                    </th>
+                    <SortableTh
+                      label={t("finances.colParcel")}
+                      column="code"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                    />
+                    <SortableTh
+                      label={t("finances.productName")}
+                      column="product"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                    />
+                    <SortableTh
+                      label={t("finances.colPlace")}
+                      column="place"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                    />
+                    <SortableTh
+                      label={t("common.status")}
+                      column="status"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                    />
+                    <SortableTh
+                      label={t("finances.colSale")}
+                      column="sale"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("finances.colCodShort")}
+                      column="base"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                      className="hidden text-right lg:table-cell"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("finances.profitCol")}
+                      column="profit"
+                      activeKey={inventorySortKey}
+                      sortDir={inventorySortDir}
+                      onSort={toggleInventorySort}
+                      className="hidden text-right xl:table-cell"
+                      buttonClassName="ml-auto"
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {inventory.map((r) => (
+                  {inventoryRows.map((r) => (
                     <tr key={r.id} className={trClass}>
                       <td className={tdClass}>
                         <Link
@@ -419,8 +547,24 @@ export function SenderFinancesPage() {
                       <td className={tdClass}>
                         <StatusBadge status={r.status} />
                       </td>
-                      <td className={`${tdClass} text-right tabular-nums`}>
+                      <td className={`${tdClass} text-right font-semibold tabular-nums`}>
                         {formatTnd(r.sale)}
+                      </td>
+                      <td
+                        className={`${tdClass} hidden text-right tabular-nums text-ops-ink/55 lg:table-cell`}
+                      >
+                        {formatTnd(r.base)}
+                      </td>
+                      <td
+                        className={`${tdClass} hidden text-right font-semibold tabular-nums xl:table-cell ${
+                          r.profit == null
+                            ? "text-ops-ink/35"
+                            : r.profit >= 0
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-ops-accent"
+                        }`}
+                      >
+                        {r.profit != null ? formatTnd(r.profit) : "—"}
                       </td>
                     </tr>
                   ))}
@@ -443,7 +587,7 @@ export function SenderFinancesPage() {
         ) : (
           <>
             <ul className="space-y-2 md:hidden">
-              {ledgerRows.map((r) => {
+              {ledgerVisible.map((r) => {
                 const isReturn = isReturnStatus(r.status);
                 const profit = r.profit ?? 0;
                 return (
@@ -523,17 +667,69 @@ export function SenderFinancesPage() {
               <table className={tableClass}>
                 <thead className={theadClass}>
                   <tr>
-                    <th className={thClass}>{t("finances.colParcel")}</th>
-                    <th className={thClass}>{t("finances.colSale")}</th>
-                    <th className={thClass}>{t("finances.colDelivery")}</th>
-                    <th className={thClass}>{t("finances.colReturn")}</th>
-                    <th className={`${thClass} text-right`}>
-                      {t("finances.profitCol")}
-                    </th>
+                    <SortableTh
+                      label={t("finances.colParcel")}
+                      column="code"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                    />
+                    <SortableTh
+                      label={t("common.status")}
+                      column="status"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                    />
+                    <SortableTh
+                      label={t("finances.colSale")}
+                      column="sale"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("finances.colCodShort")}
+                      column="cod"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("finances.colDelivery")}
+                      column="deliveryFee"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("finances.colReturn")}
+                      column="returnFee"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
+                    <SortableTh
+                      label={t("finances.profitCol")}
+                      column="profit"
+                      activeKey={ledgerSortKey}
+                      sortDir={ledgerSortDir}
+                      onSort={toggleLedgerSort}
+                      className="text-right"
+                      buttonClassName="ml-auto"
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {ledgerRows.map((r) => (
+                  {ledgerVisible.map((r) => (
                     <tr key={r.id} className={trClass}>
                       <td className={tdClass}>
                         <Link
@@ -543,13 +739,27 @@ export function SenderFinancesPage() {
                           {r.code}
                         </Link>
                       </td>
-                      <td className={`${tdClass} tabular-nums`}>
+                      <td className={tdClass}>
+                        <Badge
+                          tone={
+                            isReturnStatus(r.status) ? "danger" : "success"
+                          }
+                        >
+                          {isReturnStatus(r.status)
+                            ? t("finances.badgeReturn")
+                            : t("finances.badgeDelivered")}
+                        </Badge>
+                      </td>
+                      <td className={`${tdClass} text-right tabular-nums`}>
                         {formatTnd(r.sale)}
                       </td>
-                      <td className={`${tdClass} tabular-nums`}>
+                      <td className={`${tdClass} text-right tabular-nums`}>
+                        {formatTnd(r.cod)}
+                      </td>
+                      <td className={`${tdClass} text-right tabular-nums`}>
                         {formatTnd(r.deliveryFee)}
                       </td>
-                      <td className={`${tdClass} tabular-nums`}>
+                      <td className={`${tdClass} text-right tabular-nums`}>
                         {r.returnFee ? formatTnd(r.returnFee) : "—"}
                       </td>
                       <td

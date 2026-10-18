@@ -1219,7 +1219,7 @@ export function CreateParcelWizard({
                   const sale = Number(unitSalePrice || price);
                   const fee = Number(deliveryFee || 0);
                   if (!Number.isFinite(cod) || !Number.isFinite(sale)) return null;
-                  const profitIfDelivered = roundMoney(sale - fee);
+                  const profitIfDelivered = roundMoney(sale - cod - fee);
                   const net = netPayoutOf({
                     price: cod,
                     deliveryFee: fee,

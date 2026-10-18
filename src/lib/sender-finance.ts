@@ -51,7 +51,7 @@ export function netPayoutOf(p: ParcelMoneyInput): number {
 
 export function parcelProfitOf(p: ParcelMoneyInput): number | null {
   if (DELIVERED_STATUSES.has(p.status)) {
-    return roundMoney(salePriceOf(p) - deliveryFeeOf(p));
+    return roundMoney(salePriceOf(p) - n(p.price) - deliveryFeeOf(p));
   }
   if (RETURN_STATUSES.has(p.status)) {
     return roundMoney(-(deliveryFeeOf(p) + returnFeeOf(p)));

@@ -232,12 +232,12 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5 md:grid-cols-4 md:gap-2">
         <SearchInput
           value={query}
           onChange={setQuery}
           placeholder={t("finances.searchPlace")}
-          className="col-span-2"
+          className="col-span-2 md:col-span-2"
         />
         <select
           aria-label={t("finances.filterGov")}
@@ -272,7 +272,7 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
         <button
           type="button"
           onClick={resetFilters}
-          className="col-span-2 text-left text-[11px] font-semibold text-ops-ink/40"
+          className="col-span-2 text-left text-[11px] font-semibold text-ops-ink/40 md:col-span-4"
         >
           {t("finances.resetFilters")}
         </button>

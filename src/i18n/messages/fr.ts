@@ -667,7 +667,7 @@ export const fr: MessageTree = {
     productName: "Produit",
     productFallback: "Sans nom de produit",
     basePriceHint: "Montant collecté chez le client",
-    profitDeliveredHint: "Vente − frais livraison",
+    profitDeliveredHint: "Vente − base − frais livraison",
     profitReturnHint: "Frais livraison + retour",
     profitPendingHint: "Calculé à la clôture (livré / retour)",
     badgeReturn: "Retour",
