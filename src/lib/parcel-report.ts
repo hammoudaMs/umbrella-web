@@ -10,6 +10,7 @@ export type ReportParcel = {
   governorate: string;
   price: string | number;
   notes: string | null;
+  designation?: string | null;
   status: string;
   mode: "EXTERNAL" | "INTERNAL";
   createdAt: string;
@@ -20,6 +21,14 @@ export type ReportParcel = {
   color?: string | null;
   size?: string | null;
 };
+
+function designationOf(r: {
+  designation?: string | null;
+  notes?: string | null;
+}) {
+  const value = r.designation?.trim() || r.notes?.trim();
+  return value || "—";
+}
 
 function escapeHtml(value: string) {
   return value
@@ -268,8 +277,9 @@ export function downloadParcelsExcel(
     "Statut",
     ...(includeMode ? ["Mode"] : []),
   ];
-  const lines = rows.map((r) =>
-    [
+  const lines = rows.map((r) => {
+    const designation = designationOf(r);
+    return [
       r.code ?? "",
       r.recipientName,
       r.phone,
@@ -278,13 +288,13 @@ export function downloadParcelsExcel(
       r.governorate,
       r.price,
       formatDate(r.createdAt),
-      r.notes ?? "",
+      designation === "—" ? "" : designation,
       statusLabel(r.status),
       ...(includeMode ? [r.mode] : []),
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(";"),
-  );
+      .join(";");
+  });
   const csv = `\uFEFF${[header.join(";"), ...lines].join("\n")}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -343,7 +353,7 @@ export function openParcelListPdf(options: {
                 </td>
                 <td><strong>${escapeHtml(formatMoney(r.price))}</strong> <span class="muted">TND</span></td>
                 <td>${escapeHtml(formatDate(r.createdAt))}</td>
-                <td>${escapeHtml(r.notes ?? "—")}</td>
+                <td>${escapeHtml(designationOf(r))}</td>
                 <td>${escapeHtml(statusLabel(r.status))}</td>
                 ${includeMode ? `<td>${escapeHtml(r.mode)}</td>` : ""}
               </tr>`,
@@ -375,7 +385,11 @@ export function openParcelListPdf(options: {
       </div>
 
       <h1>${escapeHtml(title)}</h1>
-      <p class="muted">Liste des colis · export PDF Umbrella</p>
+      <p class="muted">${
+        title.toLowerCase().includes("manifeste")
+          ? "Colis en attente de collecte uniquement"
+          : "Liste des colis · export PDF Umbrella"
+      }</p>
 
       <div class="summary">
         <div class="pill"><span>Colis</span><strong>${rows.length}</strong></div>
@@ -395,7 +409,10 @@ export function openParcelListPdf(options: {
   openPrintDocument(`Umbrella — ${title}`, body);
 }
 
-type BordereauParcel = ReportParcel & { designation?: string | null };
+type BordereauParcel = ReportParcel & {
+  designation?: string | null;
+  customInputs?: Array<{ id: string; label: string; value: string }> | null;
+};
 
 function bordereauSheetStyles() {
   return `
@@ -467,6 +484,19 @@ function bordereauSheetHtml(
             includeMode ? ` · ${escapeHtml(parcel.mode)}` : ""
           }</p>
         </div>
+        ${
+          Array.isArray(parcel.customInputs) && parcel.customInputs.length > 0
+            ? `<div style="grid-column:1 / -1">
+          <p class="label">Champs article</p>
+          <p class="value">${parcel.customInputs
+            .map(
+              (row) =>
+                `${escapeHtml(row.label)} : ${escapeHtml(row.value)}`,
+            )
+            .join(" · ")}</p>
+        </div>`
+            : ""
+        }
         <div style="grid-column:1 / -1">
           <p class="label">Options colis</p>
           <p class="value">
@@ -596,13 +626,19 @@ export function openPickupManifestBordereauPdf(manifest: {
     governorate: string;
     price: string | number;
     status: string;
+    createdAt?: string;
+    notes?: string | null;
+    designation?: string | null;
   }>;
 }) {
+  const requiredStatus =
+    manifest.manifestKind === "EN_ATTENTE" ? "EN_ATTENTE" : "A_ENLEVER";
+  const parcels = manifest.parcels.filter((p) => p.status === requiredStatus);
   const title =
     manifest.manifestKind === "EN_ATTENTE"
-      ? "Manifeste colis en attente"
-      : "Manifeste pré-enlèvement";
-  const rows = manifest.parcels
+      ? "Manifeste · En attente de collecte"
+      : "Manifeste · Pré-enlèvement";
+  const rows = parcels
     .map(
       (p, i) => `
       <tr>
@@ -611,6 +647,8 @@ export function openPickupManifestBordereauPdf(manifest: {
         <td>${escapeHtml(p.recipientName)}<br/><span class="muted">${escapeHtml(p.phone)}</span></td>
         <td>${escapeHtml(`${p.city}, ${p.governorate}`)}</td>
         <td>${escapeHtml(formatMoney(p.price))} TND</td>
+        <td>${escapeHtml(p.createdAt ? formatDate(p.createdAt) : "—")}</td>
+        <td>${escapeHtml(designationOf(p))}</td>
         <td>${escapeHtml(statusLabel(p.status))}</td>
       </tr>`,
     )
@@ -636,7 +674,7 @@ export function openPickupManifestBordereauPdf(manifest: {
       <p class="brand">Umbrella Express</p>
       <p class="sub">${escapeHtml(title)}</p>
       <p class="code">${escapeHtml(manifest.code)}</p>
-      <p class="muted">${manifest.parcels.length} colis · max 20</p>
+      <p class="muted">${parcels.length} colis · max 20 · statut requis uniquement</p>
       <img class="barcode" src="${code128DataUrl(manifest.code)}" alt="Code-barres ${escapeHtml(manifest.code)}" />
     </div>
     <table>
@@ -646,7 +684,9 @@ export function openPickupManifestBordereauPdf(manifest: {
           <th>Code</th>
           <th>Destinataire</th>
           <th>Ville</th>
-          <th>Montant</th>
+          <th>Prix</th>
+          <th>Date</th>
+          <th>Désignation</th>
           <th>Statut</th>
         </tr>
       </thead>

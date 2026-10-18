@@ -81,7 +81,8 @@ export function scanActionsFor(status: string, role: AppRole): ScanAction[] {
         label: a.label,
         status: a.status,
         tone: a.tone,
-        needsComment: Boolean(a.needsComment) || requiresComment(a.status, status),
+        needsComment:
+          Boolean(a.needsComment) || requiresComment(a.status, status, role),
         commentLabel: a.commentLabel,
       }));
   }
@@ -93,8 +94,12 @@ export function scanActionsFor(status: string, role: AppRole): ScanAction[] {
       label: OPS_LABELS[a.status] ?? a.label,
       status: a.status,
       tone: a.tone,
-      needsComment: Boolean(a.needsComment) || requiresComment(a.status, status),
-      commentLabel: a.commentLabel,
+      needsComment:
+        Boolean(a.needsComment) || requiresComment(a.status, status, role),
+      commentLabel:
+        a.status === "RETOUR_RECU" && role === "SUPPORT"
+          ? "Pourquoi annulé ?"
+          : a.commentLabel,
       needsDriver: a.status === "AFFECTE_LIVREUR",
     }));
 
@@ -113,8 +118,11 @@ export function scanActionsFor(status: string, role: AppRole): ScanAction[] {
             : to === "AFFECTE_LIVREUR" || to === "EN_COURS"
               ? ("success" as const)
               : ("neutral" as const),
-      needsComment: requiresComment(to, status),
-      commentLabel: "Motif",
+      needsComment: requiresComment(to, status, role),
+      commentLabel:
+        to === "RETOUR_RECU" && role === "SUPPORT"
+          ? "Pourquoi annulé ?"
+          : "Motif",
       needsDriver: to === "AFFECTE_LIVREUR",
     }));
 

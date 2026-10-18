@@ -215,50 +215,50 @@ export function StatusCategoriesManager() {
           return (
             <Panel
               key={category.id}
-              className={category.isActive ? "" : "opacity-70"}
+              className={category.isActive ? "min-w-0" : "min-w-0 opacity-70"}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white"
-                      style={{ backgroundColor: category.color }}
-                    >
-                      <Icon className="h-4 w-4" strokeWidth={2.25} />
-                    </span>
-                    <div className="min-w-0">
-                      <h2 className="truncate font-display text-lg font-bold text-ops-ink">
-                        {category.label}
-                      </h2>
-                      <p className="truncate text-xs text-ops-ink/45">
-                        {category.key}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Badge>
-                      <span
-                        className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: category.color }}
-                      />
-                      {category.color}
-                    </Badge>
-                    <Badge>
-                      {STATUS_CATEGORY_ICON_LABELS[category.icon]}
-                    </Badge>
-                    {!category.isActive ? (
-                      <Badge tone="warning">Masquée</Badge>
-                    ) : null}
+              <div className="flex min-w-0 flex-col gap-3">
+                <div className="flex min-w-0 items-start gap-2">
+                  <span
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
+                    style={{ backgroundColor: category.color }}
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={2.25} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="break-words font-display text-lg font-bold text-ops-ink">
+                      {category.label}
+                    </h2>
+                    <p className="truncate text-xs text-ops-ink/45">
+                      {category.key}
+                    </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge>
+                    <span
+                      className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: category.color }}
+                    />
+                    {category.color}
+                  </Badge>
+                  <Badge>
+                    {STATUS_CATEGORY_ICON_LABELS[category.icon]}
+                  </Badge>
+                  {!category.isActive ? (
+                    <Badge tone="warning">Masquée</Badge>
+                  ) : null}
+                </div>
+                <div className="flex w-full flex-wrap gap-1">
                   <Button
                     variant="ghost"
                     size="sm"
                     icon={Pencil}
                     aria-label="Modifier"
                     onClick={() => openEdit(category)}
-                  />
+                  >
+                    Modifier
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -266,7 +266,9 @@ export function StatusCategoriesManager() {
                     aria-label="Activer ou masquer"
                     disabled={busyId === category.id}
                     onClick={() => void toggleActive(category)}
-                  />
+                  >
+                    {category.isActive ? "Masquer" : "Afficher"}
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -274,7 +276,9 @@ export function StatusCategoriesManager() {
                     aria-label="Supprimer"
                     disabled={busyId === category.id}
                     onClick={() => void remove(category)}
-                  />
+                  >
+                    Suppr.
+                  </Button>
                 </div>
               </div>
               <div

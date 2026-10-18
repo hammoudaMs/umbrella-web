@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import { UserPlus } from "lucide-react";
 import { AuthLayout } from "@/components/AuthLayout";
+import { SignupKycStep } from "@/components/SignupKycStep";
 import { errorText, useToast } from "@/components/Feedback";
 import {
   Button,
@@ -13,7 +14,10 @@ import {
   TextAreaField,
   TextField,
 } from "@/components/ui";
-import { useAuth } from "@/lib/auth-context";
+import {
+  KYC_TOKEN_STORAGE_KEY,
+  useAuth,
+} from "@/lib/auth-context";
 import { PRODUCT_TYPES } from "@/lib/product-types";
 import {
   digitsOnly,
@@ -44,6 +48,9 @@ export default function SignupPage() {
   const toast = useToast();
   const router = useRouter();
   const { signUp } = useAuth();
+  const [step, setStep] = useState<"form" | "kyc">("form");
+  const [kycToken, setKycToken] = useState<string | null>(null);
+  const [pendingName, setPendingName] = useState("");
   const [values, setValues] = useState<SignupFormValues>(INITIAL);
   const [errors, setErrors] = useState<SignupFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -84,7 +91,7 @@ export default function SignupPage() {
     setErrors({});
     setBusy(true);
     try {
-      await signUp({
+      const pending = await signUp({
         name: result.data.name,
         email: result.data.email,
         phone: result.data.phone,
@@ -97,6 +104,18 @@ export default function SignupPage() {
         productNotes: result.data.productNotes || undefined,
         shopName: result.data.name,
       });
+      if (pending.kycToken) {
+        try {
+          sessionStorage.setItem(KYC_TOKEN_STORAGE_KEY, pending.kycToken);
+        } catch {
+          /* ignore */
+        }
+        setKycToken(pending.kycToken);
+        setPendingName(pending.user.name);
+        setStep("kyc");
+        toast.success("Compte créé", "Étape suivante : pièces d’identité");
+        return;
+      }
       toast.success(t("auth.signupPendingToast"));
       router.replace("/compte-en-attente");
     } catch (err) {
@@ -104,6 +123,39 @@ export default function SignupPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (step === "kyc" && kycToken) {
+    return (
+      <AuthLayout
+        title="Vérification d’identité"
+        subtitle="CIN recto, verso et selfie avec la pièce"
+        footer={
+          <>
+            {t("auth.alreadyHaveAccount")}{" "}
+            <Link
+              href="/login"
+              className="font-semibold text-brand hover:underline"
+            >
+              {t("auth.submit")}
+            </Link>
+          </>
+        }
+      >
+        <SignupKycStep
+          kycToken={kycToken}
+          userName={pendingName}
+          onDone={() => {
+            try {
+              sessionStorage.removeItem(KYC_TOKEN_STORAGE_KEY);
+            } catch {
+              /* ignore */
+            }
+            router.replace("/compte-en-attente");
+          }}
+        />
+      </AuthLayout>
+    );
   }
 
   return (
@@ -121,6 +173,10 @@ export default function SignupPage() {
     >
       <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
         {formError ? <ErrorBanner message={formError} /> : null}
+
+        <p className="rounded-xl bg-ops-ink/[0.04] px-3 py-2 text-[12px] text-ops-ink/50">
+          Étape 1/2 — vos informations. Ensuite : CIN + selfie.
+        </p>
 
         <TextField
           label={t("common.name")}
@@ -235,7 +291,7 @@ export default function SignupPage() {
         ) : null}
 
         <Button type="submit" icon={UserPlus} className="w-full" loading={busy}>
-          {t("auth.signupSubmit")}
+          Continuer vers la vérification
         </Button>
         <p className="text-center text-xs text-ink-muted">
           {t("auth.signupPendingHint")}

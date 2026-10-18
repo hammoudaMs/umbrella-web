@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DASHBOARD_STATUS_KEYS } from "@/lib/dashboard-statuses";
+import { REASON_VISIBLE_STATUSES } from "@/lib/parcel-transitions";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 type Countable = { status: string };
@@ -139,13 +140,20 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
         })}
       </div>
       {current ? (
-        <button
-          type="button"
-          onClick={() => go(null)}
-          className="text-[11px] font-medium text-ops-ink/40 transition hover:text-ops-accent"
-        >
-          Effacer le filtre
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => go(null)}
+            className="text-[11px] font-medium text-ops-ink/40 transition hover:text-ops-accent"
+          >
+            Effacer le filtre
+          </button>
+          {REASON_VISIBLE_STATUSES.has(current as StatusKey) ? (
+            <p className="text-[11px] font-medium text-ops-accent/80">
+              Motif d’annulation / vérification affiché sur chaque colis
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -15,6 +15,7 @@ import {
   Ticket,
   Truck,
   Users,
+  Wallet,
   Warehouse,
 } from "lucide-react";
 import type { TranslateFn } from "@/i18n/types";
@@ -605,6 +606,13 @@ export function portalHomeFor(
           hint: t("home.trackManage"),
           tone: "bg-sky-600",
           icon: Package,
+        },
+        {
+          href: `${b}/finances`,
+          label: t("nav.finances"),
+          hint: t("home.balancesTransfers"),
+          tone: "bg-amber-700",
+          icon: Wallet,
         },
         {
           href: `${b}/payments`,

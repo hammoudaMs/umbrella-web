@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { KeyRound, Save, UserRound } from "lucide-react";
 import { LocaleToggle } from "@/components/LocaleToggle";
 import { errorText, useToast } from "@/components/Feedback";
+import { SenderParcelInputsSettings } from "@/components/SenderParcelInputsSettings";
 import { Avatar, Badge, Button, PageHeader, Panel, TextField } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
 import { roleLabel } from "@/lib/roles";
@@ -104,6 +105,8 @@ export function SettingsForm({
           <LocaleToggle />
         </div>
       </Panel>
+
+      {user.role === "EXPEDITEUR" ? <SenderParcelInputsSettings /> : null}
 
       <Panel>
         <div className="mb-4 flex items-center gap-2">

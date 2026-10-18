@@ -128,6 +128,7 @@ export const fr: MessageTree = {
     tickets: "Tickets",
     nouveau: "Nouveau",
     payments: "Paiements",
+    finances: "Finances",
     retours: "Retours",
     manifestes: "Manifestes",
     adresses: "Adresses",
@@ -390,7 +391,7 @@ export const fr: MessageTree = {
     coverageAria: "Couverture nationale Umbrella Express",
     coverageEyebrow: "Couverture",
     coverageHudLive: "Réseau actif",
-    coverageHudNodes: "6 hubs synchronisés",
+    coverageHudNodes: "logo réseau Umbrella",
     coverageTitle: "Toute la Tunisie, un même réseau",
     coverageLead:
       "Hubs actifs du nord au sud — pickup, transit et livraison sur le terrain que vos clients connaissent.",
@@ -561,10 +562,12 @@ export const fr: MessageTree = {
   },
   retours: {
     titleMine: "Mes retours",
-    descMine: "Tous les colis en statut retour",
+    descMine:
+      "Retours après enlèvement — passez la vérification ou laissez le support (avec motif)",
     titlePrepare: "Retours à préparer",
     descPrepare: "Préparer et mettre prêts les retours dépôt",
-    descSupport: "Vérification des retours — expéditeur et livreur visibles",
+    descSupport:
+      "Vérification des retours — motif d’annulation obligatoire ; l’expéditeur peut aussi passer la vérification",
   },
   zones: {
     titleTour: "Mes zones de tournée",
@@ -623,7 +626,7 @@ export const fr: MessageTree = {
     dechargeStamped: "Décharge (cachet)",
     validateClose: "Valider la clôture",
     loadingManifests: "Chargement manifestes…",
-    kindEnAttente: "En attente",
+    kindEnAttente: "En attente de collecte",
     kindPreEnlevement: "Pré-enlèvement",
   },
   payments: {

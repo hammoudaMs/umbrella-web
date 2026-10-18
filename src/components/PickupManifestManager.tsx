@@ -172,6 +172,20 @@ export function PickupManifestManager({ basePath, lockedKind }: Props) {
 
   async function createManifest() {
     if (!token || selected.size === 0) return;
+    const requiredStatus = KIND_STATUS[activeKind];
+    const parcelIds = Array.from(selected).filter((id) =>
+      eligible.some((p) => p.id === id && p.status === requiredStatus),
+    );
+    if (parcelIds.length === 0) {
+      toast.error(
+        "Aucun colis éligible",
+        activeKind === "EN_ATTENTE"
+          ? "Seuls les colis « En attente de collecte » peuvent entrer dans ce manifeste."
+          : "Seuls les colis pré-enlèvement (à enlever) sont acceptés.",
+      );
+      setSelected(new Set());
+      return;
+    }
     setCreating(true);
     try {
       const manifest = await apiFetch<PickupManifest>("/pickup-manifests", {
@@ -179,7 +193,7 @@ export function PickupManifestManager({ basePath, lockedKind }: Props) {
         token,
         body: JSON.stringify({
           kind: activeKind,
-          parcelIds: Array.from(selected),
+          parcelIds,
         }),
       });
       toast.success("Manifeste créé", manifest.code);

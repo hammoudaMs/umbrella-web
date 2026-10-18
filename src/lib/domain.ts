@@ -31,9 +31,15 @@ export type Parcel = {
   locality?: string | null;
   address: string;
   price: number | string;
+  unitSalePrice?: number | string | null;
+  deliveryFee?: number | string | null;
+  returnFee?: number | string | null;
   notes: string | null;
   designation?: string | null;
+  customInputs?: Array<{ id: string; label: string; value: string }> | null;
   status: string;
+  /** Last cancel / verify / return motif (filter + list). */
+  statusReason?: string | null;
   mode: DeliveryMode;
   bordereauUrl: string | null;
   createdAt: string;
@@ -191,7 +197,7 @@ export function isParcelBundle(
 }
 
 export const PICKUP_MANIFEST_KIND_LABEL: Record<PickupManifestKind, string> = {
-  EN_ATTENTE: "En attente",
+  EN_ATTENTE: "En attente de collecte",
   PRE_ENLEVEMENT: "Pré-enlèvement",
 };
 
@@ -267,7 +273,16 @@ export type UserRow = {
   address?: string | null;
   shopName?: string | null;
   productTypes?: string[];
+  parcelInputDefs?: Array<{
+    id: string;
+    label: string;
+    required: boolean;
+  }> | null;
   productNotes?: string | null;
+  cinFrontUrl?: string | null;
+  cinBackUrl?: string | null;
+  selfieWithCinUrl?: string | null;
+  kycSubmittedAt?: string | null;
   isActive: boolean;
   createdAt: string;
 };

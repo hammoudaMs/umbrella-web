@@ -41,8 +41,17 @@ import {
   type PaymentHistoryEntry,
   type PaymentStatus,
 } from "@/lib/domain";
+import { netPayoutOf } from "@/lib/sender-finance";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
+
+function parcelNet(p: Parcel): number {
+  return netPayoutOf({
+    price: toAmount(p.price),
+    deliveryFee: toAmount(p.deliveryFee ?? 0),
+    status: p.status,
+  });
+}
 
 type PaymentSortKey = "id" | "sender" | "items" | "amount" | "status";
 
@@ -146,7 +155,7 @@ export function PaymentsManager({
       enDemande: sum(["EN_DEMANDE"]),
       enCours: sum(["VALIDE_FINANCE", "VALIDE_CHEF", "VALIDE_EXPERT"]),
       paye: sum(["PAYE"]),
-      eligible: eligible.reduce((s, p) => s + toAmount(p.price), 0),
+      eligible: eligible.reduce((s, p) => s + parcelNet(p), 0),
       stress: paymentList.some((p) => p.budgetStress),
     };
   }, [paymentList, eligible]);
@@ -155,7 +164,7 @@ export function PaymentsManager({
     () =>
       eligible
         .filter((p) => selected.includes(p.id))
-        .reduce((s, p) => s + toAmount(p.price), 0),
+        .reduce((s, p) => s + parcelNet(p), 0),
     [eligible, selected],
   );
 
@@ -385,7 +394,16 @@ export function PaymentsManager({
                           {p.recipientName} · {p.city}
                         </span>
                       </span>
-                      <span className="font-semibold text-ops-ink">{formatTnd(p.price)}</span>
+                      <span className="text-right">
+                        <span className="block font-semibold text-ops-ink">
+                          {formatTnd(parcelNet(p))}
+                        </span>
+                        {toAmount(p.deliveryFee ?? 0) > 0 ? (
+                          <span className="block text-[10px] text-ops-ink/40">
+                            COD {formatTnd(p.price)} − liv.
+                          </span>
+                        ) : null}
+                      </span>
                     </label>
                   </li>
                 );
@@ -395,7 +413,7 @@ export function PaymentsManager({
 
           <div className="flex flex-col gap-3 border-t border-ops-card pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ops-ink/50">
-              {selected.length} colis ·{" "}
+              {selected.length} colis · net{" "}
               <span className="font-bold text-ops-ink">{formatTnd(selectedTotal)}</span>
             </p>
             <Button

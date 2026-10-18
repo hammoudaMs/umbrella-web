@@ -25,5 +25,8 @@ export type UploadKind =
   | "facture"
   | "decharge"
   | "cin"
+  | "cin-front"
+  | "cin-back"
+  | "selfie-cin"
   | "receipt"
   | "other";

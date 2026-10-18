@@ -39,6 +39,8 @@ type AnalyticsPayload = {
     awaiting: number;
     exchanges?: number;
     revenue: number;
+    profit?: number;
+    ventes?: number;
     deliveryRate: number;
     returnRate: number;
   };
@@ -46,10 +48,14 @@ type AnalyticsPayload = {
     disponible: number;
     enDemande: number;
     aVerser: number;
+    enPipeline?: number;
     verse: number;
     encaisse: number;
     retoursMontant: number;
     retoursFrais: number;
+    fraisLivraison?: number;
+    profit?: number;
+    ventes?: number;
   };
   last7Days: Array<{
     date: string;
@@ -512,11 +518,35 @@ export function AnalyticsPage({
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-xl border border-ops-card bg-ops-surface px-3 py-2 text-xs">
             <p>
-              <span className="font-semibold text-ops-ink/50">Encaissé · </span>
+              <span className="font-semibold text-ops-ink/50">
+                Net encaissé ·{" "}
+              </span>
               <span className="font-bold tabular-nums text-ops-ink">
                 {formatMoney(soldes.encaisse)}
               </span>
             </p>
+            {soldes.profit != null ? (
+              <p>
+                <span className="font-semibold text-ops-ink/50">Marge · </span>
+                <span
+                  className={`font-bold tabular-nums ${
+                    soldes.profit >= 0 ? "text-emerald-700" : "text-ops-accent"
+                  }`}
+                >
+                  {formatMoney(soldes.profit)}
+                </span>
+              </p>
+            ) : null}
+            {soldes.fraisLivraison != null ? (
+              <p>
+                <span className="font-semibold text-ops-ink/50">
+                  Frais livraison ·{" "}
+                </span>
+                <span className="font-bold tabular-nums text-ops-ink">
+                  {formatMoney(soldes.fraisLivraison)}
+                </span>
+              </p>
+            ) : null}
             <p>
               <span className="font-semibold text-ops-ink/50">
                 Montant retours ·{" "}

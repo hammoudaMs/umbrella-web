@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import {
   Ban,
   ChevronRight,
+  Copy,
   FileSpreadsheet,
   FileText,
   MessageSquareWarning,
@@ -21,6 +22,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useConfirm, useToast } from "@/components/Feedback";
+import { ReturnVerificationActions } from "@/components/ReturnVerificationActions";
 import {
   Button,
   EmptyState,
@@ -51,6 +53,10 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { canSeeDeliveryMode } from "@/lib/roles";
 import { dispatchLabel, isDispatched } from "@/lib/parcel-parcours";
+import {
+  REASON_VISIBLE_STATUSES,
+  canPassReturnVerification,
+} from "@/lib/parcel-transitions";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import { compareSortValues, SortableTh, type SortDir } from "@/lib/table-sort";
 
@@ -90,17 +96,37 @@ function formatDate(iso: string) {
   });
 }
 
-function QuietStatus({ status }: { status: string }) {
+function QuietStatus({
+  status,
+  reason,
+  emphasizeReason,
+}: {
+  status: string;
+  reason?: string | null;
+  emphasizeReason?: boolean;
+}) {
   const meta = STATUS_META[status as StatusKey];
   const color = meta?.color ?? "#64748b";
   return (
-    <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-ops-ink">
-      <span
-        className="h-2 w-2 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
-        aria-hidden
-      />
-      {meta?.label ?? status}
+    <span className="inline-flex max-w-[14rem] flex-col gap-0.5 text-[12px] font-semibold text-ops-ink">
+      <span className="inline-flex items-center gap-2">
+        <span
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: color }}
+          aria-hidden
+        />
+        {meta?.label ?? status}
+      </span>
+      {reason &&
+      (emphasizeReason ||
+        REASON_VISIBLE_STATUSES.has(status as StatusKey)) ? (
+        <span
+          className="line-clamp-2 pl-4 text-[11px] font-medium leading-snug text-ops-accent"
+          title={reason}
+        >
+          {reason}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -116,6 +142,8 @@ export function ParcelDetailTable({
   loading = false,
   showPartyDetails = false,
   multiSelect = false,
+  statusFilter = null,
+  onParcelMutated,
 }: {
   rows: Parcel[];
   onEdit?: (row: Parcel) => void;
@@ -127,6 +155,8 @@ export function ParcelDetailTable({
   loading?: boolean;
   showPartyDetails?: boolean;
   multiSelect?: boolean;
+  statusFilter?: string | null;
+  onParcelMutated?: () => void;
 }) {
   const { session } = useAuth();
   const toast = useToast();
@@ -367,9 +397,26 @@ export function ParcelDetailTable({
 
   function exportPdf() {
     try {
+      const isSenderManifest = role === "EXPEDITEUR";
+      const rows = isSenderManifest
+        ? filtered.filter((r) => r.status === "EN_ATTENTE")
+        : filtered;
+      if (isSenderManifest && rows.length === 0) {
+        toast.error(
+          "Aucun colis en attente de collecte",
+          "Le manifeste PDF n’inclut que ce statut.",
+        );
+        return;
+      }
       openParcelListPdf({
-        title: reportTitle,
-        rows: filtered,
+        title: isSenderManifest
+          ? "Manifeste · En attente de collecte"
+          : reportTitle,
+        rows: rows.map((r) => ({
+          ...r,
+          designation: r.designation ?? r.notes,
+          notes: r.notes ?? r.designation ?? null,
+        })),
         accountName: session?.user.name,
         includeMode: showModes,
       });
@@ -392,6 +439,16 @@ export function ParcelDetailTable({
     }
   }
 
+  async function copyParcelCode(row: Parcel) {
+    const code = row.code?.trim() || `#${row.id}`;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success("Code copié", code);
+    } catch {
+      toast.error("Copie impossible", code);
+    }
+  }
+
   const colSpan = (showPartyDetails ? 8 : 7) + (multiSelect ? 1 : 0);
 
   return (
@@ -410,7 +467,10 @@ export function ParcelDetailTable({
           <ToolbarIconBtn label="Excel" onClick={exportExcel}>
             <FileSpreadsheet className="h-4 w-4" />
           </ToolbarIconBtn>
-          <ToolbarIconBtn label="PDF" onClick={exportPdf}>
+          <ToolbarIconBtn
+            label={role === "EXPEDITEUR" ? "Manifeste" : "PDF"}
+            onClick={exportPdf}
+          >
             <FileText className="h-4 w-4" />
           </ToolbarIconBtn>
           <button
@@ -633,10 +693,28 @@ export function ParcelDetailTable({
                       >
                         {meta?.label ?? row.status}
                       </p>
+                      {row.statusReason &&
+                      (statusFilter
+                        ? REASON_VISIBLE_STATUSES.has(statusFilter as StatusKey)
+                        : REASON_VISIBLE_STATUSES.has(
+                            row.status as StatusKey,
+                          )) ? (
+                        <p className="rounded-lg bg-ops-accent/10 px-2.5 py-1.5 text-[12px] font-medium leading-snug text-ops-accent">
+                          Motif · {row.statusReason}
+                        </p>
+                      ) : null}
                       {multiSelect && batchPrinted ? (
                         <p className="text-[11px] font-medium text-amber-700/80 dark:text-amber-300/70">
                           Déjà imprimé en lot — réimpression possible
                         </p>
+                      ) : null}
+                      {canPassReturnVerification(row.status, role) ? (
+                        <ReturnVerificationActions
+                          parcel={row}
+                          role={role}
+                          compact
+                          onDone={() => onParcelMutated?.()}
+                        />
                       ) : null}
 
                       <div className="flex items-center gap-2 border-t border-ops-card/80 pt-3">
@@ -645,6 +723,12 @@ export function ParcelDetailTable({
                           onClick={() => printBordereau(row)}
                         >
                           <Printer className="h-5 w-5" strokeWidth={2.25} />
+                        </ActionBtn>
+                        <ActionBtn
+                          label="Copier le code"
+                          onClick={() => void copyParcelCode(row)}
+                        >
+                          <Copy className="h-5 w-5" strokeWidth={2.25} />
                         </ActionBtn>
                         {row.phone ? (
                           <ActionLink label="Appeler" href={`tel:${row.phone}`}>
@@ -872,9 +956,29 @@ export function ParcelDetailTable({
                           </p>
                         </td>
                         <td
-                          className={cn(tdClass, "whitespace-nowrap px-3 py-2")}
+                          className={cn(tdClass, "min-w-[10rem] px-3 py-2")}
                         >
-                          <QuietStatus status={row.status} />
+                          <QuietStatus
+                            status={row.status}
+                            reason={row.statusReason}
+                            emphasizeReason={
+                              !!statusFilter &&
+                              REASON_VISIBLE_STATUSES.has(
+                                statusFilter as StatusKey,
+                              )
+                            }
+                          />
+                          {canPassReturnVerification(row.status, role) &&
+                          role === "EXPEDITEUR" ? (
+                            <div className="mt-1.5">
+                              <ReturnVerificationActions
+                                parcel={row}
+                                role={role}
+                                compact
+                                onDone={() => onParcelMutated?.()}
+                              />
+                            </div>
+                          ) : null}
                         </td>
                         <td
                           className={cn(
@@ -899,6 +1003,12 @@ export function ParcelDetailTable({
                               onClick={() => printBordereau(row)}
                             >
                               <Printer className="h-3.5 w-3.5" />
+                            </IconBtn>
+                            <IconBtn
+                              label="Copier le code"
+                              onClick={() => void copyParcelCode(row)}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
                             </IconBtn>
                             {row.phone ? (
                               <IconLink

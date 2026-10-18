@@ -110,6 +110,12 @@ const SUPPORT_TARGETS = new Set<StatusKey>([
   "RETOUR_DEFINITIF",
 ]);
 
+export const EXPEDITEUR_VERIFY_FROM = new Set<StatusKey>([
+  "RETOUR_EXPEDITEURS",
+  "RETOUR_DEPOT",
+  "RETOUR_INTER_AGENCE",
+]);
+
 const COMMENT_REQUIRED = new Set<StatusKey>([
   "A_VERIFIER",
   "LIVRAISON_ANNULEE",
@@ -123,6 +129,17 @@ const COMMENT_REQUIRED = new Set<StatusKey>([
   "REMBOURSES",
 ]);
 
+export const REASON_VISIBLE_STATUSES = new Set<StatusKey>([
+  "A_VERIFIER",
+  "LIVRAISON_ANNULEE",
+  "RETOUR_DEPOT",
+  "RETOUR_INTER_AGENCE",
+  "RETOUR_EXPEDITEURS",
+  "RETOUR_RECU",
+  "RETOUR_DEFINITIF",
+  "NON_SERIEUX",
+]);
+
 export function isStatusKey(value: string): value is StatusKey {
   return value in STATUS_META;
 }
@@ -132,9 +149,23 @@ export function allowedTargets(from: string): StatusKey[] {
   return [...TRANSITIONS[from]];
 }
 
-export function requiresComment(to: string, from: string): boolean {
+export function requiresComment(
+  to: string,
+  from: string,
+  role?: AppRole,
+): boolean {
   if (from === to) return false;
-  return isStatusKey(to) && COMMENT_REQUIRED.has(to);
+  if (isStatusKey(to) && COMMENT_REQUIRED.has(to)) return true;
+  if (to === "RETOUR_RECU" && role === "SUPPORT") return true;
+  return false;
+}
+
+export function canPassReturnVerification(
+  status: string,
+  role: AppRole | undefined,
+): boolean {
+  if (role !== "EXPEDITEUR" && role !== "SUPPORT") return false;
+  return isStatusKey(status) && EXPEDITEUR_VERIFY_FROM.has(status);
 }
 
 export function canTransition(
@@ -174,6 +205,21 @@ export function canTransition(
       ok: false,
       reason: "Support : seuls les retours peuvent être vérifiés",
     };
+  }
+  if (role === "EXPEDITEUR") {
+    if (to !== "RETOUR_RECU") {
+      return {
+        ok: false,
+        reason:
+          "Expéditeur : seule la validation du retour (passer la vérification) est autorisée",
+      };
+    }
+    if (!EXPEDITEUR_VERIFY_FROM.has(from)) {
+      return {
+        ok: false,
+        reason: "Ce colis n’est pas en attente de vérification retour",
+      };
+    }
   }
   return { ok: true };
 }

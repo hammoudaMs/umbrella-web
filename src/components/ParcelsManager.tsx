@@ -253,6 +253,8 @@ export function ParcelsManager({
         reportTitle={heading || title}
         showPartyDetails={showPartyDetails}
         multiSelect={role === "EXPEDITEUR" && statusFilter === "EN_ATTENTE"}
+        statusFilter={statusFilter}
+        onParcelMutated={() => void reload()}
         canEditRow={canEdit ? canEditRow : undefined}
         canCancelRow={canDelete ? canCancelRow : undefined}
         onCancel={canDelete ? (row) => void onDelete(row) : undefined}

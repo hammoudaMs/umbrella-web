@@ -17,6 +17,11 @@ export type AuthSession = {
     phone?: string | null;
     agencyId?: number | null;
     productTypes?: string[];
+    parcelInputDefs?: Array<{
+      id: string;
+      label: string;
+      required: boolean;
+    }> | null;
   };
 };
 
@@ -156,11 +161,13 @@ export async function apiUpload(
   file: File,
   token: string,
   kind?: string,
+  path = "/uploads",
 ): Promise<{ url: string; kind?: string }> {
   const form = new FormData();
   form.append("file", file);
   const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
-  return apiFetch<{ url: string; kind?: string }>(`/uploads${qs}`, {
+  const base = path.startsWith("/") ? path : `/${path}`;
+  return apiFetch<{ url: string; kind?: string }>(`${base}${qs}`, {
     method: "POST",
     body: form,
     token,

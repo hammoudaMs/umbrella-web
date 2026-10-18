@@ -32,6 +32,8 @@ export type SignUpInput = {
 export type SignUpPendingResult = {
   pending: true;
   message: string;
+  kycToken?: string;
+  kycRequired?: boolean;
   user: {
     id: number;
     name: string;
@@ -43,11 +45,18 @@ export type SignUpPendingResult = {
   };
 };
 
+export const KYC_TOKEN_STORAGE_KEY = "umbrella.kycToken.v1";
+
 export type ProfileInput = {
   name?: string;
   email?: string;
   phone?: string;
   productTypes?: string[];
+  parcelInputDefs?: Array<{
+    id: string;
+    label: string;
+    required: boolean;
+  }>;
 };
 
 type AuthContextValue = {
@@ -199,6 +208,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: user.email,
           phone: user.phone,
           productTypes: user.productTypes ?? current.user.productTypes,
+          parcelInputDefs:
+            user.parcelInputDefs ?? current.user.parcelInputDefs ?? null,
         },
       });
     },

@@ -18,6 +18,10 @@ type Props = {
   hint?: string;
   capture?: boolean;
   className?: string;
+  /** Override session token (e.g. signup KYC token). */
+  token?: string | null;
+  /** When set, POST to this path instead of /uploads (e.g. /auth/kyc/upload). */
+  uploadPath?: string;
 };
 
 export function DocumentUploadField({
@@ -29,12 +33,15 @@ export function DocumentUploadField({
   hint,
   capture = true,
   className,
+  token: tokenProp,
+  uploadPath,
 }: Props) {
   const id = useId();
   const { session } = useAuth();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
+  const accessToken = tokenProp ?? session?.accessToken ?? null;
 
   useEffect(() => {
     return () => {
@@ -44,7 +51,7 @@ export function DocumentUploadField({
 
   async function onFile(file: File | null) {
     if (!file) return;
-    if (!session?.accessToken) {
+    if (!accessToken) {
       toast.error("Session requise pour l’upload");
       return;
     }
@@ -52,7 +59,12 @@ export function DocumentUploadField({
     setLocalPreview(URL.createObjectURL(file));
     setBusy(true);
     try {
-      const uploaded = await apiUpload(file, session.accessToken, kind);
+      const uploaded = await apiUpload(
+        file,
+        accessToken,
+        kind,
+        uploadPath,
+      );
       onChange(uploaded.url);
       toast.success("Document envoyé");
     } catch (err) {

@@ -39,6 +39,7 @@ import {
 import { STATUS_ORDER } from "@/lib/portal-nav";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 import type { PickupManifest, ReturnLot } from "@/lib/domain";
+import { netPayoutOf, summarizeSenderFinance } from "@/lib/sender-finance";
 import {
   DEFAULT_STATUS_CATEGORIES,
   isStatusCategoryIcon,
@@ -758,7 +759,12 @@ function publicUser(u: MockUser) {
     address: u.address ?? null,
     shopName: u.shopName ?? null,
     productTypes: u.productTypes ?? [],
+    parcelInputDefs: u.parcelInputDefs ?? [],
     productNotes: u.productNotes ?? null,
+    cinFrontUrl: u.cinFrontUrl ?? null,
+    cinBackUrl: u.cinBackUrl ?? null,
+    selfieWithCinUrl: u.selfieWithCinUrl ?? null,
+    kycSubmittedAt: u.kycSubmittedAt ?? null,
     isActive: u.isActive,
     createdAt: u.createdAt ?? nowIso(),
   };
@@ -777,6 +783,7 @@ function sessionFor(user: MockUser): AuthSession {
       phone: user.phone,
       agencyId: user.agencyId ?? null,
       productTypes: user.productTypes ?? [],
+      parcelInputDefs: user.parcelInputDefs ?? [],
     },
   };
 }
@@ -1043,6 +1050,24 @@ function applyParcelFields(target: MockParcel, dto: Record<string, unknown>) {
   target.color = optionalText("color", target.color);
   target.size = optionalText("size", target.size);
   target.notes = optionalText("notes", target.notes);
+  if (dto.customInputs !== undefined) {
+    target.customInputs = Array.isArray(dto.customInputs)
+      ? dto.customInputs
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const row = item as Record<string, unknown>;
+            const id = String(row.id ?? "").trim();
+            const label = String(row.label ?? "").trim();
+            const value = String(row.value ?? "").trim();
+            if (!id || !label || !value) return null;
+            return { id, label, value: value.slice(0, 120) };
+          })
+          .filter(
+            (row): row is { id: string; label: string; value: string } =>
+              row != null,
+          )
+      : [];
+  }
   target.paymentMode = optionalText("paymentMode", target.paymentMode);
   target.exchangeNotes = optionalText("exchangeNotes", target.exchangeNotes);
   target.landmarkPhotoName = optionalText("landmarkPhotoName", target.landmarkPhotoName);
@@ -1059,6 +1084,27 @@ function applyParcelFields(target: MockParcel, dto: Record<string, unknown>) {
     const price = num(dto.price);
     if (price === undefined || price < 0) throw new MockHttpError(400, "Prix invalide");
     target.price = price;
+  }
+  if (dto.unitSalePrice !== undefined) {
+    const sale = num(dto.unitSalePrice);
+    if (sale === undefined || sale < 0) {
+      throw new MockHttpError(400, "Prix de vente invalide");
+    }
+    target.unitSalePrice = sale;
+  }
+  if (dto.deliveryFee !== undefined) {
+    const fee = num(dto.deliveryFee);
+    if (fee === undefined || fee < 0) {
+      throw new MockHttpError(400, "Frais livraison invalide");
+    }
+    target.deliveryFee = fee;
+  }
+  if (dto.returnFee !== undefined) {
+    const fee = num(dto.returnFee);
+    if (fee === undefined || fee < 0) {
+      throw new MockHttpError(400, "Frais retour invalide");
+    }
+    target.returnFee = fee;
   }
   if (dto.deliveryWindow !== undefined) {
     const w = str(dto.deliveryWindow);
@@ -1381,6 +1427,12 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
       "Déclaration obligatoire : contenu léger, conforme à la législation tunisienne, responsabilité exclusive de l’expéditeur",
     );
   }
+  const unitSale =
+    num(dto.unitSalePrice) !== undefined ? num(dto.unitSalePrice)! : price;
+  const deliveryFee =
+    num(dto.deliveryFee) !== undefined ? Math.max(0, num(dto.deliveryFee)!) : 7;
+  const returnFee =
+    num(dto.returnFee) !== undefined ? Math.max(0, num(dto.returnFee)!) : 7;
   const parcel: MockParcel = {
     id: nextId(db().parcels),
     code: generateCode(mode === "EXTERNAL" ? "UMB-EXT" : "UMB"),
@@ -1390,6 +1442,9 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
     city,
     address,
     price,
+    unitSalePrice: unitSale,
+    deliveryFee,
+    returnFee,
     notes: null,
     status: "EN_ATTENTE",
     mode,
@@ -1562,19 +1617,34 @@ function analytics(actor: Actor) {
   const returns = returnList.length;
   const exchanges = list.filter((p) => p.status === "ECHANGES").length;
   const revenue = list.reduce((s, p) => s + p.price, 0);
-  const encaisse = list
-    .filter((p) => DELIVERED.includes(p.status))
-    .reduce((s, p) => s + p.price, 0);
-  const retoursMontant = returnList.reduce((s, p) => s + p.price, 0);
-
   const payments = senderPayments(actor);
-  const sumBy = (status: PaymentStatus) =>
-    payments.filter((p) => p.status === status).reduce((s, p) => s + p.amount, 0);
-  const enDemande = sumBy("EN_DEMANDE");
-  const aVerser = sumBy("APPROUVE");
-  const verse = sumBy("PAYE");
-  const retoursFrais = round3(returns * 7);
-  const disponible = Math.max(0, encaisse - enDemande - aVerser - verse);
+  const moneyParcels = list.filter(
+    (p) => DELIVERED.includes(p.status) || p.status.startsWith(RETURN_PREFIX),
+  );
+  const finance = summarizeSenderFinance(
+    moneyParcels.map((p) => ({
+      price: Number(p.price),
+      unitSalePrice:
+        p.unitSalePrice != null ? Number(p.unitSalePrice) : null,
+      deliveryFee: Number(p.deliveryFee ?? 0),
+      returnFee: Number(p.returnFee ?? 0),
+      status: p.status,
+    })),
+    payments.map((p) => ({ amount: Number(p.amount), status: p.status })),
+  );
+  const {
+    disponible,
+    enDemande,
+    aVerser,
+    enPipeline,
+    verse,
+    encaisse,
+    retoursMontant,
+    retoursFrais,
+    fraisLivraison,
+    profit,
+    ventes,
+  } = finance;
 
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -1605,10 +1675,24 @@ function analytics(actor: Actor) {
       awaiting,
       exchanges,
       revenue,
+      profit,
+      ventes,
       deliveryRate: total ? Math.round((delivered / total) * 100) : 0,
       returnRate: total ? Math.round((returns / total) * 100) : 0,
     },
-    soldes: { disponible, enDemande, aVerser, verse, encaisse, retoursMontant, retoursFrais },
+    soldes: {
+      disponible,
+      enDemande,
+      aVerser,
+      enPipeline,
+      verse,
+      encaisse,
+      retoursMontant,
+      retoursFrais,
+      fraisLivraison,
+      profit,
+      ventes,
+    },
     last7Days,
   };
 }
@@ -1808,9 +1892,17 @@ function createPayment(actor: Actor, dto: Record<string, unknown>) {
   }
   const sender = db().users.find((u) => u.id === senderId);
   const at = nowIso();
+  const lines = parcels.map((p) => ({
+    parcel: { id: p.id, code: p.code },
+    amount: netPayoutOf({
+      price: Number(p.price),
+      deliveryFee: Number(p.deliveryFee ?? 0),
+      status: p.status,
+    }),
+  }));
   const payment: MockPayment = {
     id: nextId(db().payments),
-    amount: round3(parcels.reduce((s, p) => s + p.price, 0)),
+    amount: round3(lines.reduce((s, line) => s + line.amount, 0)),
     status: "EN_DEMANDE",
     note: str(dto.note) ?? null,
     createdAt: at,
@@ -1818,7 +1910,7 @@ function createPayment(actor: Actor, dto: Record<string, unknown>) {
     sender: sender
       ? { id: sender.id, name: sender.name, email: sender.email }
       : undefined,
-    items: parcels.map((p) => ({ parcel: { id: p.id, code: p.code }, amount: p.price })),
+    items: lines,
     history: [
       {
         at,
@@ -2038,6 +2130,16 @@ function setUserApproval(actor: Actor, id: number, dto: Record<string, unknown>)
   if (status !== "APPROVED" && status !== "REJECTED") {
     throw new MockHttpError(400, "Statut d'approbation invalide");
   }
+  if (
+    status === "APPROVED" &&
+    target.role === "EXPEDITEUR" &&
+    (!target.cinFrontUrl || !target.cinBackUrl || !target.selfieWithCinUrl)
+  ) {
+    throw new MockHttpError(
+      400,
+      "KYC incomplet : CIN recto, verso et selfie avec pièce requis avant approbation",
+    );
+  }
   target.approvalStatus = status;
   commit();
   return publicUser(target);
@@ -2154,6 +2256,22 @@ function updateProfile(actor: Actor, dto: Record<string, unknown>) {
             (x) => x.localeCompare(t, "fr", { sensitivity: "base" }) === 0,
           ) === i,
       );
+  }
+  if (dto.parcelInputDefs !== undefined) {
+    const raw = Array.isArray(dto.parcelInputDefs) ? dto.parcelInputDefs : [];
+    const defs: Array<{ id: string; label: string; required: boolean }> = [];
+    const seen = new Set<string>();
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const id = String(row.id ?? "").trim();
+      const label = String(row.label ?? "").trim();
+      if (!id || !label || label.length > 60 || seen.has(id)) continue;
+      seen.add(id);
+      defs.push({ id, label, required: Boolean(row.required) });
+      if (defs.length >= 12) break;
+    }
+    user.parcelInputDefs = defs;
   }
   commit();
   return publicUser(user);
@@ -2719,6 +2837,8 @@ export function mockSignUp(dto: Record<string, unknown>) {
   return {
     pending: true as const,
     message: PENDING_MESSAGE,
+    kycToken: `mock-kyc-${user.id}`,
+    kycRequired: true as const,
     user: {
       id: user.id,
       name: user.name,
@@ -2728,6 +2848,67 @@ export function mockSignUp(dto: Record<string, unknown>) {
       approvalStatus: user.approvalStatus,
       zoneId: user.zoneId ?? null,
     },
+  };
+}
+
+function userIdFromKycToken(token?: string): number {
+  if (!token?.startsWith("mock-kyc-")) {
+    throw new MockHttpError(401, "Jeton de vérification invalide ou expiré");
+  }
+  const id = Number(token.replace("mock-kyc-", ""));
+  const user = db().users.find((u) => u.id === id && u.role === "EXPEDITEUR");
+  if (!user) throw new MockHttpError(401, "Compte introuvable");
+  if ((user.approvalStatus ?? "APPROVED") === "REJECTED") {
+    throw new MockHttpError(403, REJECTED_MESSAGE);
+  }
+  return user.id;
+}
+
+function mockSubmitKyc(token: string | undefined, dto: Record<string, unknown>) {
+  const userId = userIdFromKycToken(token);
+  const user = db().users.find((u) => u.id === userId);
+  if (!user) throw new MockHttpError(404, "Compte introuvable");
+  const cinFrontUrl = str(dto.cinFrontUrl);
+  const cinBackUrl = str(dto.cinBackUrl);
+  const selfieWithCinUrl = str(dto.selfieWithCinUrl);
+  if (!cinFrontUrl || !cinBackUrl || !selfieWithCinUrl) {
+    throw new MockHttpError(400, "Documents KYC incomplets");
+  }
+  user.cinFrontUrl = cinFrontUrl;
+  user.cinBackUrl = cinBackUrl;
+  user.selfieWithCinUrl = selfieWithCinUrl;
+  user.kycSubmittedAt = nowIso();
+  commit();
+  return {
+    ok: true as const,
+    message:
+      "Pièces d’identité reçues. Votre compte reste en vérification jusqu’à validation.",
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      approvalStatus: user.approvalStatus,
+      kycSubmittedAt: user.kycSubmittedAt,
+    },
+  };
+}
+
+function mockKycStatus(token: string | undefined) {
+  const userId = userIdFromKycToken(token);
+  const user = db().users.find((u) => u.id === userId);
+  if (!user) throw new MockHttpError(404, "Compte introuvable");
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    approvalStatus: user.approvalStatus,
+    cinFrontUrl: user.cinFrontUrl ?? null,
+    cinBackUrl: user.cinBackUrl ?? null,
+    selfieWithCinUrl: user.selfieWithCinUrl ?? null,
+    kycSubmittedAt: user.kycSubmittedAt ?? null,
+    kycComplete: Boolean(
+      user.cinFrontUrl && user.cinBackUrl && user.selfieWithCinUrl,
+    ),
   };
 }
 
@@ -2816,6 +2997,7 @@ const PARCEL_OPS: AppRole[] = [
   "PICKUP",
   "MAGASINIER",
   "LIVREUR",
+  "EXPEDITEUR",
 ];
 const SCAN_ROLES: AppRole[] = [
   "SUPER_ADMIN",
@@ -2992,7 +3174,7 @@ const ROUTES: Route[] = [
       const gate = canTransition(hit.status, status, actor.role);
       if (!gate.ok) throw new MockHttpError(400, gate.reason);
       const comment = str(body.comment) ?? null;
-      if (requiresComment(status, hit.status) && !comment?.trim()) {
+      if (requiresComment(status, hit.status, actor.role) && !comment?.trim()) {
         throw new MockHttpError(
           400,
           "Un motif / commentaire est obligatoire pour ce statut",
@@ -3010,6 +3192,16 @@ const ROUTES: Route[] = [
         hit.driverId = driver.id;
         hit.driver = { id: driver.id, name: driver.name, phone: driver.phone };
       }
+      const keepReason =
+        status === "A_VERIFIER" ||
+        status === "LIVRAISON_ANNULEE" ||
+        status.startsWith("RETOUR_") ||
+        status === "NON_SERIEUX";
+      hit.statusReason = comment?.trim()
+        ? comment.trim()
+        : keepReason
+          ? (hit.statusReason ?? null)
+          : null;
       hit.status = status;
       pushEvent(hit, EVENT_LABEL[status] ?? status, {
         status,
@@ -3907,6 +4099,9 @@ const ROUTES: Route[] = [
       if (actor.role === "LIVREUR" && parcel.driverId !== actor.id) {
         throw new MockHttpError(403, "Ce colis ne vous est pas assigné");
       }
+      if (actor.role === "EXPEDITEUR" && parcel.senderId !== actor.id) {
+        throw new MockHttpError(403, "Ce colis ne vous appartient pas");
+      }
       if (AGENCY_ROLES.includes(actor.role) && !inAgency(actor, parcel)) {
         throw new MockHttpError(403, "Colis hors de votre agence");
       }
@@ -3915,14 +4110,32 @@ const ROUTES: Route[] = [
       const gate = canTransition(parcel.status, status, actor.role);
       if (!gate.ok) throw new MockHttpError(400, gate.reason);
       const comment = str(body.comment) ?? null;
-      if (requiresComment(status, parcel.status) && !comment?.trim()) {
+      if (requiresComment(status, parcel.status, actor.role) && !comment?.trim()) {
         throw new MockHttpError(
           400,
-          "Un motif / commentaire est obligatoire pour ce statut",
+          actor.role === "SUPPORT" && status === "RETOUR_RECU"
+            ? "Motif obligatoire : pourquoi la commande a été annulée / le retour vérifié"
+            : "Un motif / commentaire est obligatoire pour ce statut",
         );
       }
+      const keepReason =
+        status === "A_VERIFIER" ||
+        status === "LIVRAISON_ANNULEE" ||
+        status.startsWith("RETOUR_") ||
+        status === "NON_SERIEUX";
+      parcel.statusReason = comment?.trim()
+        ? comment.trim()
+        : keepReason
+          ? (parcel.statusReason ?? null)
+          : null;
       parcel.status = status;
-      pushEvent(parcel, EVENT_LABEL[status] ?? status, {
+      const eventLabel =
+        actor.role === "EXPEDITEUR" && status === "RETOUR_RECU"
+          ? "Vérification passée (expéditeur)"
+          : actor.role === "SUPPORT" && status === "RETOUR_RECU"
+            ? "Vérification retour (support)"
+            : (EVENT_LABEL[status] ?? status);
+      pushEvent(parcel, eventLabel, {
         status,
         comment,
         actor,
@@ -4423,6 +4636,9 @@ const ROUTES: Route[] = [
         facture: mockDocUrl("facture"),
         decharge: mockDocUrl("decharge"),
         cin: mockDocUrl("cin"),
+        "cin-front": mockDocUrl("cin"),
+        "cin-back": mockDocUrl("cin"),
+        "selfie-cin": mockDocUrl("cin"),
       };
       return {
         url: sampleByKind[kind] ?? `/mock-docs/bordereau-colis.pdf`,
@@ -4473,6 +4689,26 @@ export function mockHandle(
     return mockSignIn(String(payload.email ?? ""), String(payload.password ?? ""));
   }
   if (method === "POST" && clean === "/auth/signup") return mockSignUp(payload);
+  if (method === "GET" && clean === "/auth/kyc") {
+    return mockKycStatus(token);
+  }
+  if (method === "POST" && clean === "/auth/kyc") {
+    return mockSubmitKyc(token, payload);
+  }
+  if (method === "POST" && clean === "/auth/kyc/upload") {
+    userIdFromKycToken(token);
+    const kind = str(payload.kind) || "cin";
+    const sampleByKind: Record<string, string> = {
+      cin: mockDocUrl("cin"),
+      "cin-front": mockDocUrl("cin"),
+      "cin-back": mockDocUrl("cin"),
+      "selfie-cin": mockDocUrl("cin"),
+    };
+    return {
+      url: sampleByKind[kind] ?? mockDocUrl("cin"),
+      kind,
+    };
+  }
   if (method === "POST" && clean === "/auth/refresh") {
     return mockRefresh(String(payload.refreshToken ?? ""));
   }

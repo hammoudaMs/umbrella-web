@@ -27,6 +27,7 @@ import { useAuth } from "@/lib/auth-context";
 import type { ApprovalStatus, UserRow } from "@/lib/domain";
 import type { Agency } from "@/lib/domain";
 import { useRoleLabel } from "@/i18n/hooks";
+import { mediaUrl } from "@/lib/media";
 import { roleNeedsAgency, type AppRole } from "@/lib/roles";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
@@ -84,6 +85,69 @@ type ApprovalFilter = "ALL" | ApprovalStatus;
 type FormErrors = Partial<
   Record<"name" | "email" | "password" | "phone", string>
 >;
+
+function kycComplete(u: UserRow): boolean {
+  return Boolean(u.cinFrontUrl && u.cinBackUrl && u.selfieWithCinUrl);
+}
+
+function KycDocsPreview({ user }: { user: UserRow }) {
+  if (user.role !== "EXPEDITEUR") return null;
+  const docs: Array<{ label: string; url: string | null | undefined }> = [
+    { label: "CIN recto", url: user.cinFrontUrl },
+    { label: "CIN verso", url: user.cinBackUrl },
+    { label: "Selfie", url: user.selfieWithCinUrl },
+  ];
+  const any = docs.some((d) => d.url);
+  if (!any && !user.kycSubmittedAt) {
+    return (
+      <p className="text-[11px] font-medium text-amber-700/80">
+        KYC non envoyé — pièces d’identité manquantes
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-medium text-ops-ink/55">
+        Vérification identité
+        {user.kycSubmittedAt
+          ? ` · ${new Date(user.kycSubmittedAt).toLocaleDateString("fr-TN")}`
+          : ""}
+        {kycComplete(user) ? " · complet" : " · incomplet"}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {docs.map((d) =>
+          d.url ? (
+            <a
+              key={d.label}
+              href={mediaUrl(d.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="block overflow-hidden rounded-lg border border-ops-card bg-white"
+              title={d.label}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={mediaUrl(d.url)}
+                alt={d.label}
+                className="h-14 w-20 object-cover"
+              />
+              <span className="block px-1.5 py-0.5 text-center text-[9px] text-ops-ink/50">
+                {d.label}
+              </span>
+            </a>
+          ) : (
+            <span
+              key={d.label}
+              className="flex h-14 w-20 items-center justify-center rounded-lg border border-dashed border-ops-card text-[9px] text-ops-ink/35"
+            >
+              {d.label}
+            </span>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
 
 function profileSummary(u: UserRow): string | null {
   if (u.role === "EXPEDITEUR") {
@@ -290,6 +354,17 @@ export function UsersManager({
   }
 
   async function setApproval(user: UserRow, status: "APPROVED" | "REJECTED") {
+    if (
+      status === "APPROVED" &&
+      user.role === "EXPEDITEUR" &&
+      !kycComplete(user)
+    ) {
+      toast.error(
+        "KYC incomplet",
+        "CIN recto, verso et selfie avec pièce requis avant approbation.",
+      );
+      return;
+    }
     if (status === "REJECTED") {
       const ok = await confirm({
         title: `Refuser ${user.name} ?`,
@@ -335,6 +410,12 @@ export function UsersManager({
               variant="success"
               icon={Check}
               loading={busyId === u.id}
+              disabled={u.role === "EXPEDITEUR" && !kycComplete(u)}
+              title={
+                u.role === "EXPEDITEUR" && !kycComplete(u)
+                  ? "KYC incomplet"
+                  : undefined
+              }
               onClick={() => void setApproval(u, "APPROVED")}
             >
               Approuver
@@ -356,6 +437,12 @@ export function UsersManager({
             variant="success"
             icon={Check}
             loading={busyId === u.id}
+            disabled={u.role === "EXPEDITEUR" && !kycComplete(u)}
+            title={
+              u.role === "EXPEDITEUR" && !kycComplete(u)
+                ? "KYC incomplet"
+                : undefined
+            }
             onClick={() => void setApproval(u, "APPROVED")}
           >
             Approuver
@@ -533,6 +620,7 @@ export function UsersManager({
                           .join(" · ")}
                       </p>
                     )}
+                    <KycDocsPreview user={u} />
                     {userActions(u)}
                   </li>
                 );
@@ -601,6 +689,9 @@ export function UsersManager({
                                   {summary}
                                 </p>
                               ) : null}
+                              <div className="mt-2">
+                                <KycDocsPreview user={u} />
+                              </div>
                             </div>
                           </div>
                         </td>

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -12,51 +12,146 @@ gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const MENTION = "TUNISIA";
 
-type Hub = {
+type LogoDot = {
   id: string;
   x: number;
   y: number;
-  labelKey: string;
-  side?: "left";
-  code: string;
+  tone: "red" | "light";
+  size: "sm" | "md" | "lg";
 };
 
-/** Normalized 0–100 coords on the map plate. */
-const HUBS: readonly Hub[] = [
-  { id: "tunis", x: 56, y: 12, labelKey: "landing.hubTunis", code: "36.8N" },
-  { id: "sousse", x: 58, y: 32, labelKey: "landing.hubSousse", code: "35.8N" },
-  { id: "sfax", x: 55, y: 48, labelKey: "landing.hubSfax", code: "34.7N" },
-  {
-    id: "gafsa",
-    x: 34,
-    y: 52,
-    labelKey: "landing.hubGafsa",
-    side: "left",
-    code: "34.4N",
-  },
-  { id: "gabes", x: 56, y: 62, labelKey: "landing.hubGabes", code: "33.8N" },
-  { id: "medenine", x: 58, y: 74, labelKey: "landing.hubMedenine", code: "33.3N" },
-] as const;
+/** Brand canopy geometry — matches /logo-umbrella.png (front-top view). */
+const CANOPY = {
+  tipX: 54,
+  tipY: 26,
+  /** Half-width at hem */
+  halfW: 16,
+  /** Depth tip → hem */
+  depth: 20,
+  panels: 4,
+} as const;
 
-const LINKS: ReadonlyArray<readonly [string, string]> = [
-  ["tunis", "sousse"],
-  ["sousse", "sfax"],
-  ["sfax", "gabes"],
-  ["gabes", "medenine"],
-  ["sfax", "gafsa"],
-  ["gafsa", "gabes"],
-];
+/**
+ * Pointillist Umbrella Express canopy (icon only — no circular “corp” mark).
+ * Alternating cream / red gores, scalloped hem, light rim highlight.
+ */
+function buildUmbrellaLogoDots(): LogoDot[] {
+  const { tipX, tipY, halfW, depth, panels } = CANOPY;
+  const dots: LogoDot[] = [];
+  let n = 0;
 
-function hub(id: string): Hub {
-  const found = HUBS.find((h) => h.id === id);
-  if (!found) throw new Error(`Unknown hub ${id}`);
-  return found;
+  const push = (
+    x: number,
+    y: number,
+    tone: "red" | "light",
+    size: LogoDot["size"] = "sm",
+  ) => {
+    dots.push({ id: `d-${n++}`, x, y, tone, size });
+  };
+
+  /** Hem X for panel edge index 0..panels (scalloped). */
+  const hemX = (edge: number) => {
+    const t = edge / panels;
+    return tipX - halfW + t * halfW * 2;
+  };
+
+  /** Hem Y with scallop tips (brand logo bottom points). */
+  const hemY = (edge: number) => {
+    const t = edge / panels;
+    const scallop = Math.sin(t * Math.PI * panels) * 1.6;
+    return tipY + depth + scallop;
+  };
+
+  // Ferrule tip
+  push(tipX, tipY, "red", "md");
+
+  for (let p = 0; p < panels; p += 1) {
+    const tone: "red" | "light" = p % 2 === 0 ? "light" : "red";
+    const x0 = hemX(p);
+    const x1 = hemX(p + 1);
+    const y0 = hemY(p);
+    const y1 = hemY(p + 1);
+
+    // Dense fill: rows from tip → hem
+    for (let row = 1; row <= 10; row += 1) {
+      const u = row / 10;
+      const cols = 2 + Math.floor(u * 4);
+      for (let c = 0; c <= cols; c += 1) {
+        const v = c / cols;
+        // Quad lerp tip→hem edges
+        const lx = tipX + (x0 - tipX) * u;
+        const ly = tipY + (y0 - tipY) * u;
+        const rx = tipX + (x1 - tipX) * u;
+        const ry = tipY + (y1 - tipY) * u;
+        const x = lx + (rx - lx) * v;
+        const y = ly + (ry - ly) * v;
+        // Slight dome bulge
+        const bulge = Math.sin(u * Math.PI) * (1 - Math.abs(v - 0.5) * 1.2) * 1.1;
+        push(x, y - bulge, tone, u > 0.85 ? "md" : "sm");
+      }
+    }
+
+    // Seam ridge (cream highlight between panels)
+    for (let row = 1; row <= 9; row += 1) {
+      const u = row / 9;
+      push(
+        tipX + (x0 - tipX) * u,
+        tipY + (y0 - tipY) * u - Math.sin(u * Math.PI) * 0.6,
+        "light",
+        "sm",
+      );
+    }
+
+    // Scallop tip on hem (brand “points”)
+    push((x0 + x1) / 2, (y0 + y1) / 2 + 0.4, tone, "md");
+  }
+
+  // Gloss arc on top-left of canopy (logo highlight)
+  for (let i = 0; i <= 8; i += 1) {
+    const t = i / 8;
+    const a = Math.PI * 0.95 + t * Math.PI * 0.55;
+    const r = halfW * (0.55 + t * 0.2);
+    push(
+      tipX + Math.cos(a) * r * 0.95,
+      tipY + depth * 0.22 + Math.sin(a) * r * 0.35,
+      "light",
+      i === 0 || i === 8 ? "md" : "sm",
+    );
+  }
+
+  return dots;
 }
+
+/** Panel seams tip → hem (logo structure, not a full wheel). */
+function buildRibLinks(): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+  const { tipX, tipY, halfW, depth, panels } = CANOPY;
+  const ribs: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+  for (let e = 0; e <= panels; e += 1) {
+    const t = e / panels;
+    const x = tipX - halfW + t * halfW * 2;
+    const scallop = Math.sin(t * Math.PI * panels) * 1.6;
+    ribs.push({
+      x1: tipX,
+      y1: tipY,
+      x2: x,
+      y2: tipY + depth + scallop,
+    });
+  }
+  return ribs;
+}
+
+const SIZE_PX: Record<LogoDot["size"], string> = {
+  sm: "h-1 w-1",
+  md: "h-1.5 w-1.5",
+  lg: "h-2 w-2",
+};
 
 export function LandingCoverage() {
   const t = useT();
   const root = useRef<HTMLElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const logoDots = useMemo(() => buildUmbrellaLogoDots(), []);
+  const ribs = useMemo(() => buildRibLinks(), []);
 
   useGSAP(
     () => {
@@ -67,7 +162,7 @@ export function LandingCoverage() {
       if (reduce) {
         gsap.set(
           scope.querySelectorAll(
-            ".cov-copy, .cov-foot, .cov-stage, .cov-hub, .cov-letter, .cov-reflect, .cov-hud, .cov-link, .cov-packet",
+            ".cov-copy, .cov-foot, .cov-stage, .cov-dot, .cov-letter, .cov-reflect, .cov-hud, .cov-rib, .cov-packet",
           ),
           { clearProps: "all", autoAlpha: 1, y: 0, scale: 1 },
         );
@@ -77,11 +172,11 @@ export function LandingCoverage() {
       gsap.set(".cov-copy", { autoAlpha: 0, y: 26 });
       gsap.set(".cov-foot", { autoAlpha: 0, y: 16 });
       gsap.set(".cov-stage", { autoAlpha: 0, scale: 0.96 });
-      gsap.set(".cov-hub", { autoAlpha: 0, scale: 0.4 });
+      gsap.set(".cov-dot", { autoAlpha: 0, scale: 0.2 });
       gsap.set(".cov-letter", { autoAlpha: 0, y: 14, rotateX: -40 });
       gsap.set(".cov-reflect", { autoAlpha: 0 });
       gsap.set(".cov-hud", { autoAlpha: 0, y: -8 });
-      gsap.set(".cov-link", { strokeDashoffset: 120 });
+      gsap.set(".cov-rib", { strokeDashoffset: 80 });
       gsap.set(".cov-scan", { yPercent: -120, autoAlpha: 0 });
       gsap.set(".cov-grid", { autoAlpha: 0 });
 
@@ -96,19 +191,19 @@ export function LandingCoverage() {
         .to(".cov-grid", { autoAlpha: 1, duration: 0.6 }, 0.1)
         .to(".cov-stage", { autoAlpha: 1, scale: 1, duration: 0.9 }, 0.12)
         .to(
-          ".cov-link",
+          ".cov-rib",
           {
             strokeDashoffset: 0,
-            duration: 1.1,
-            stagger: 0.08,
+            duration: 0.9,
+            stagger: 0.05,
             ease: "power2.inOut",
           },
-          0.35,
+          0.3,
         )
         .to(
-          ".cov-hub",
-          { autoAlpha: 1, scale: 1, duration: 0.45, stagger: 0.07 },
-          0.55,
+          ".cov-dot",
+          { autoAlpha: 1, scale: 1, duration: 0.35, stagger: 0.008 },
+          0.45,
         )
         .to(
           ".cov-letter",
@@ -146,10 +241,10 @@ export function LandingCoverage() {
         repeat: -1,
       });
 
-      scope.querySelectorAll<SVGPathElement>(".cov-link").forEach((el, i) => {
+      scope.querySelectorAll<SVGPathElement>(".cov-rib").forEach((el, i) => {
         gsap.to(el, {
-          strokeDashoffset: -120,
-          duration: 3.2 + i * 0.25,
+          strokeDashoffset: -80,
+          duration: 4 + i * 0.2,
           ease: "none",
           repeat: -1,
         });
@@ -157,18 +252,18 @@ export function LandingCoverage() {
 
       scope.querySelectorAll<SVGCircleElement>(".cov-packet").forEach((el, i) => {
         const path = scope.querySelector<SVGPathElement>(
-          `.cov-link[data-i="${i % LINKS.length}"]`,
+          `.cov-rib[data-i="${i % ribs.length}"]`,
         );
         if (!path) return;
         const len = path.getTotalLength();
         const prog = { t: 0 };
-        gsap.set(el, { opacity: 0.9 });
+        gsap.set(el, { opacity: 0.85 });
         gsap.to(prog, {
           t: 1,
-          duration: 2.4 + (i % 3) * 0.4,
+          duration: 2.2 + (i % 3) * 0.35,
           ease: "none",
           repeat: -1,
-          delay: i * 0.35,
+          delay: i * 0.3,
           onUpdate: () => {
             const p = path.getPointAtLength(prog.t * len);
             el.setAttribute("cx", String(p.x));
@@ -180,14 +275,14 @@ export function LandingCoverage() {
       scope.querySelectorAll<HTMLElement>(".cov-pulse").forEach((el, i) => {
         gsap.fromTo(
           el,
-          { scale: 0.5, opacity: 0.55 },
+          { scale: 0.5, opacity: 0.45 },
           {
-            scale: 2.25,
+            scale: 2.1,
             opacity: 0,
-            duration: 2.2,
+            duration: 2.4,
             ease: "power1.out",
             repeat: -1,
-            delay: i * 0.28,
+            delay: i * 0.35,
           },
         );
       });
@@ -247,7 +342,7 @@ export function LandingCoverage() {
         stageEl.addEventListener("mouseleave", onLeave);
       }
     },
-    { scope: root },
+    { scope: root, dependencies: [ribs.length] },
   );
 
   return (
@@ -257,7 +352,6 @@ export function LandingCoverage() {
       className="relative isolate overflow-hidden bg-[#050505] text-white"
       aria-label={t("landing.coverageAria")}
     >
-      {/* Perspective floor grid */}
       <div
         className="cov-grid cov-grid-drift pointer-events-none absolute inset-0 opacity-[0.12]"
         aria-hidden
@@ -320,7 +414,6 @@ export function LandingCoverage() {
           className="cov-stage relative flex flex-col items-center justify-center"
         >
           <div className="relative w-full max-w-[300px] sm:max-w-[340px] md:max-w-[380px]">
-            {/* HUD corner brackets */}
             <div className="cov-hud pointer-events-none absolute -inset-3 z-20 sm:-inset-4" aria-hidden>
               <span className="absolute left-0 top-0 h-4 w-4 border-l border-t border-[#991211]/70" />
               <span className="absolute right-0 top-0 h-4 w-4 border-r border-t border-[#991211]/70" />
@@ -350,7 +443,6 @@ export function LandingCoverage() {
                 quality={95}
               />
 
-              {/* Lidar scan */}
               <div
                 className="cov-scan pointer-events-none absolute inset-x-0 top-0 z-[5] h-[18%]"
                 aria-hidden
@@ -361,67 +453,57 @@ export function LandingCoverage() {
                 }}
               />
 
-              {/* Network links + packets */}
               <svg
                 className="pointer-events-none absolute inset-0 z-[6] h-full w-full overflow-visible"
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
                 aria-hidden
               >
-                {LINKS.map(([a, b], i) => {
-                  const ha = hub(a);
-                  const hb = hub(b);
-                  const d = `M ${ha.x} ${ha.y} L ${hb.x} ${hb.y}`;
-                  return (
-                    <path
-                      key={`${a}-${b}`}
-                      className="cov-link"
-                      data-i={i}
-                      d={d}
-                      fill="none"
-                      stroke="#991211"
-                      strokeOpacity={0.55}
-                      strokeWidth={0.35}
-                      strokeDasharray="3 4"
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  );
-                })}
-                {LINKS.map((_, i) => (
+                {ribs.map((rib, i) => (
+                  <path
+                    key={`rib-${i}`}
+                    className="cov-rib"
+                    data-i={i}
+                    d={`M ${rib.x1} ${rib.y1} L ${rib.x2} ${rib.y2}`}
+                    fill="none"
+                    stroke="#991211"
+                    strokeOpacity={0.4}
+                    strokeWidth={0.28}
+                    strokeDasharray="2.5 3.5"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+                {ribs.map((_, i) => (
                   <circle
                     key={`p-${i}`}
                     className="cov-packet"
-                    r={0.7}
-                    fill="#ff6b5a"
+                    r={0.55}
+                    fill="#E5DBD4"
                     opacity={0}
                   />
                 ))}
               </svg>
 
-              {HUBS.map((h) => {
-                const left = h.side === "left";
+              {logoDots.map((d) => {
+                const isLight = d.tone === "light";
+                const pulse = d.size === "lg";
                 return (
                   <div
-                    key={h.id}
-                    className="cov-hub absolute z-10"
-                    style={{ left: `${h.x}%`, top: `${h.y}%` }}
+                    key={d.id}
+                    className="cov-dot absolute z-10"
+                    style={{ left: `${d.x}%`, top: `${d.y}%` }}
+                    aria-hidden
                   >
-                    <span className="cov-pulse absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#991211]/40" />
-                    <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_2px_rgba(255,80,70,0.55)]" />
-                    <div
-                      className={`absolute top-1/2 flex -translate-y-1/2 flex-col ${
-                        left
-                          ? "right-3 items-end sm:right-3.5"
-                          : "left-3 items-start sm:left-3.5"
+                    {pulse ? (
+                      <span className="cov-pulse absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#991211]/35" />
+                    ) : null}
+                    <span
+                      className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${SIZE_PX[d.size]} ${
+                        isLight
+                          ? "bg-[#E5DBD4] shadow-[0_0_8px_2px_rgba(229,219,212,0.55)]"
+                          : "bg-[#991211] shadow-[0_0_8px_2px_rgba(153,18,17,0.65)]"
                       }`}
-                    >
-                      <span className="whitespace-nowrap font-display text-[10px] font-medium tracking-[0.12em] text-white/90 sm:text-[11px]">
-                        {t(h.labelKey)}
-                      </span>
-                      <span className="mt-0.5 font-mono text-[8px] tracking-[0.14em] text-[#991211]/90">
-                        {h.code}
-                      </span>
-                    </div>
+                    />
                   </div>
                 );
               })}

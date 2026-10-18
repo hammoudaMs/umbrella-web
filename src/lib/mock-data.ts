@@ -26,7 +26,16 @@ export type MockUser = {
   address?: string | null;
   shopName?: string | null;
   productTypes?: string[];
+  parcelInputDefs?: Array<{
+    id: string;
+    label: string;
+    required: boolean;
+  }> | null;
   productNotes?: string | null;
+  cinFrontUrl?: string | null;
+  cinBackUrl?: string | null;
+  selfieWithCinUrl?: string | null;
+  kycSubmittedAt?: string | null;
   createdAt?: string;
   passwordResetToken?: string | null;
   passwordResetExpires?: string | null;
@@ -424,6 +433,7 @@ export const MOCK_PARCELS: MockParcel[] = [
     price: 88,
     notes: "Montre",
     status: "A_VERIFIER",
+    statusReason: "Client absent — reporté à demain 14h",
     mode: "EXTERNAL",
     bordereauUrl: null,
     createdAt: day(5),
@@ -554,10 +564,44 @@ export const MOCK_PARCELS: MockParcel[] = [
     price: 38,
     notes: "Retour lot demo",
     status: "LIVRAISON_ANNULEE",
+    statusReason: "Client — refuse la commande",
     mode: "INTERNAL",
     bordereauUrl: null,
     createdAt: day(3),
     senderId: 3,
+  },
+  {
+    id: 18,
+    code: "UMB-RET-EXP-001",
+    recipientName: "Sami Gharbi",
+    phone: "51926850",
+    governorate: "Tunis",
+    city: "Tunis",
+    address: "Centre ville",
+    price: 42,
+    notes: "Chaussures",
+    designation: "Chaussures",
+    status: "RETOUR_EXPEDITEURS",
+    statusReason: "Expéditeur — annulation après enlèvement",
+    mode: "INTERNAL",
+    bordereauUrl: null,
+    createdAt: day(2),
+    senderId: 3,
+    timeline: [
+      { at: day(4), label: "Colis créé" },
+      { at: day(3), label: "Colis récupéré" },
+      {
+        at: day(2),
+        label: "Livraison annulée — Expéditeur — annulation après enlèvement",
+        comment: "Expéditeur — annulation après enlèvement",
+        status: "LIVRAISON_ANNULEE",
+      },
+      {
+        at: day(1),
+        label: "En transit vers l’expéditeur",
+        status: "RETOUR_EXPEDITEURS",
+      },
+    ],
   },
 ];
 

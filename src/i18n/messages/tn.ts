@@ -128,6 +128,7 @@ export const tn: MessageTree = {
     tickets: "تذاكر",
     nouveau: "جديد",
     payments: "الدفعات",
+    finances: "المالية",
     retours: "الرجع",
     manifestes: "المنيفست",
     adresses: "العناوين",
@@ -384,7 +385,7 @@ export const tn: MessageTree = {
     coverageAria: "تغطية Umbrella Express في تونس",
     coverageEyebrow: "التغطية",
     coverageHudLive: "الشبكة نشطة",
-    coverageHudNodes: "6 مراكز متزامنة",
+    coverageHudNodes: "شعار شبكة أمبريلا",
     coverageTitle: "كلّ تونس، شبكة وحدة",
     coverageLead:
       "مراكز نشطة من الشمال للجنوب — بيك آب، عبور و توصيل على التراب اللي حرفونك يعرفوه.",
@@ -616,7 +617,7 @@ export const tn: MessageTree = {
     dechargeStamped: "الديشارج (مختومة)",
     validateClose: "أكّد الإقفال",
     loadingManifests: "يحمّل المنيفستات…",
-    kindEnAttente: "يستنّى",
+    kindEnAttente: "يستنّى الجمع",
     kindPreEnlevement: "قبل الالتقاط",
   },
   payments: {

@@ -48,7 +48,18 @@ import type {
 } from "@/lib/domain";
 import { USE_MOCK } from "@/lib/mock-mode";
 import { displayGovernorate } from "@/lib/normalize-text";
+import {
+  DEFAULT_DELIVERY_FEE,
+  DEFAULT_RETURN_FEE,
+  netPayoutOf,
+  roundMoney,
+} from "@/lib/sender-finance";
 import { openBordereauPdf } from "@/lib/parcel-report";
+import {
+  buildCustomInputsFromValues,
+  normalizeInputDefs,
+  validateRequiredInputs,
+} from "@/lib/parcel-input-defs";
 import {
   mergeSavedProductType,
   productTypeOptions,
@@ -166,6 +177,10 @@ export function CreateParcelWizard({
     () => productTypeOptions(savedProductTypes),
     [savedProductTypes],
   );
+  const parcelInputDefs = useMemo(
+    () => normalizeInputDefs(session?.user.parcelInputDefs),
+    [session?.user.parcelInputDefs],
+  );
   const { data: deliveryRoutesData } = useApiQuery<DeliveryRoute[]>(
     open && showModes ? "/delivery-routes" : null,
   );
@@ -189,6 +204,10 @@ export function CreateParcelWizard({
   const [size, setSize] = useState("");
   const [productType, setProductType] = useState("");
   const [productTypeOther, setProductTypeOther] = useState("");
+  const [includeArticle, setIncludeArticle] = useState(false);
+  const [customInputValues, setCustomInputValues] = useState<
+    Record<string, string>
+  >({});
   const [location, setLocation] = useState<AddressLocationValue>(EMPTY_ADDRESS);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("EXTERNAL");
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -199,6 +218,9 @@ export function CreateParcelWizard({
   const [forceWeakAddress, setForceWeakAddress] = useState(false);
   const [zoneName, setZoneName] = useState<string | null>(null);
   const [price, setPrice] = useState("");
+  const [unitSalePrice, setUnitSalePrice] = useState("");
+  const [deliveryFee, setDeliveryFee] = useState(String(DEFAULT_DELIVERY_FEE));
+  const [returnFee, setReturnFee] = useState(String(DEFAULT_RETURN_FEE));
   const [articleCount, setArticleCount] = useState("1");
   const [parcelCount, setParcelCount] = useState("1");
   const [paymentMode, setPaymentMode] = useState("espece");
@@ -229,6 +251,8 @@ export function CreateParcelWizard({
     setSize("");
     setProductType("");
     setProductTypeOther("");
+    setIncludeArticle(false);
+    setCustomInputValues({});
     setLocation(EMPTY_ADDRESS);
     setDeliveryMode("EXTERNAL");
     setDeliveryWindow("journee");
@@ -467,13 +491,15 @@ export function CreateParcelWizard({
       return true;
     }
     if (id === "parcel") {
-      if (!productType) {
-        toast.error("Choisissez le type de produit");
-        return false;
-      }
-      if (productType === "Autre" && productTypeOther.trim().length < 2) {
-        toast.error("Précisez le type de produit");
-        return false;
+      if (includeArticle) {
+        if (!productType) {
+          toast.error("Choisissez le type de produit");
+          return false;
+        }
+        if (productType === "Autre" && productTypeOther.trim().length < 2) {
+          toast.error("Précisez le type de produit");
+          return false;
+        }
       }
       const priceNum = Number(price);
       if (!Number.isFinite(priceNum) || priceNum < 0) {
@@ -490,6 +516,14 @@ export function CreateParcelWizard({
         toast.error(
           "Acceptez la déclaration légale (contenu léger, conforme, responsabilité expéditeur).",
         );
+        return false;
+      }
+      const customError = validateRequiredInputs(
+        parcelInputDefs,
+        customInputValues,
+      );
+      if (customError) {
+        toast.error(customError);
         return false;
       }
       return true;
@@ -531,8 +565,15 @@ export function CreateParcelWizard({
       return;
     }
 
-    const designation =
-      productType === "Autre" ? productTypeOther.trim() : productType;
+    const designation = includeArticle
+      ? productType === "Autre"
+        ? productTypeOther.trim()
+        : productType
+      : undefined;
+    const customInputs = buildCustomInputsFromValues(
+      parcelInputDefs,
+      customInputValues,
+    );
     const street = location.address.trim();
     const address = location.locality.trim()
       ? `${location.locality.trim()}, ${street}`
@@ -544,6 +585,11 @@ export function CreateParcelWizard({
       const zonePayload = showZones
         ? await resolveZonePayload(zoneName)
         : { zoneName: null as string | null, zoneId: null as number | null };
+      const saleNum = unitSalePrice.trim()
+        ? Number(unitSalePrice)
+        : Number(price);
+      const deliveryFeeNum = Number(deliveryFee || DEFAULT_DELIVERY_FEE);
+      const returnFeeNum = Number(returnFee || DEFAULT_RETURN_FEE);
       const created = await request<Parcel>("/parcels", "POST", {
         recipientName: recipientName.trim(),
         phone: phone.trim(),
@@ -552,9 +598,21 @@ export function CreateParcelWizard({
         city: location.city,
         address,
         price: Number(price),
+        ...(isSender
+          ? {
+              unitSalePrice: Number.isFinite(saleNum) ? saleNum : Number(price),
+              deliveryFee: Number.isFinite(deliveryFeeNum)
+                ? deliveryFeeNum
+                : DEFAULT_DELIVERY_FEE,
+              returnFee: Number.isFinite(returnFeeNum)
+                ? returnFeeNum
+                : DEFAULT_RETURN_FEE,
+            }
+          : {}),
         articleCount: Number(articleCount || 1),
-        designation,
+        ...(designation ? { designation } : {}),
         notes: notes.trim() || undefined,
+        ...(customInputs.length ? { customInputs } : {}),
         ...(showModes ? { mode: deliveryMode } : {}),
         allowOpen: allowTry,
         tryProduct: allowTry,
@@ -580,7 +638,7 @@ export function CreateParcelWizard({
             : {}),
       });
 
-      if (productType === "Autre") {
+      if (includeArticle && productType === "Autre" && designation) {
         const nextTypes = mergeSavedProductType(
           savedProductTypes.length
             ? savedProductTypes
@@ -1060,56 +1118,10 @@ export function CreateParcelWizard({
               </h3>
               <p className="mt-1 text-sm text-ops-ink/50">
                 {isSender
-                  ? "Choisissez le type et le montant à encaisser (COD)."
-                  : "Type de produit, COD et options de livraison."}
+                  ? "Montant COD obligatoire. Infos article optionnelles."
+                  : "COD obligatoire. Type de produit optionnel."}
               </p>
             </div>
-
-            <div>
-              <FieldLabel htmlFor="productType">Type de produit</FieldLabel>
-              <select
-                id="productType"
-                name="productType"
-                required
-                className={fieldClass}
-                value={productType}
-                onChange={(e) => {
-                  setProductType(e.target.value);
-                  if (e.target.value !== "Autre") setProductTypeOther("");
-                }}
-              >
-                <option value="" disabled>
-                  Sélectionnez un type
-                </option>
-                {typeOptions.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {productType === "Autre" ? (
-              <div>
-                <FieldLabel htmlFor="productTypeOther">
-                  Précisez le type
-                </FieldLabel>
-                <input
-                  id="productTypeOther"
-                  name="productTypeOther"
-                  required
-                  minLength={2}
-                  className={fieldClass}
-                  value={productTypeOther}
-                  onChange={(e) => setProductTypeOther(e.target.value)}
-                  placeholder="Ex. meuble, pièces auto…"
-                />
-                <p className="mt-1.5 text-[12px] text-ops-ink/45">
-                  Ce type sera enregistré sur votre compte pour les prochains
-                  colis.
-                </p>
-              </div>
-            ) : null}
 
             <div>
               <FieldLabel htmlFor="price">
@@ -1126,7 +1138,10 @@ export function CreateParcelWizard({
                   inputMode="decimal"
                   className={cn(fieldClass, "pr-14 text-lg font-semibold")}
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={(e) => {
+                    setPrice(e.target.value);
+                    if (!unitSalePrice.trim()) setUnitSalePrice(e.target.value);
+                  }}
                   placeholder="0"
                 />
                 <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-bold text-ops-ink/45">
@@ -1136,13 +1151,245 @@ export function CreateParcelWizard({
             </div>
 
             {isSender ? (
+              <div className="space-y-3 rounded-xl border border-ops-card bg-ops-page/40 p-3.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ops-ink/45">
+                  Marge & frais
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <FieldLabel htmlFor="unitSalePrice">
+                      Prix de vente / unité
+                    </FieldLabel>
+                    <div className="relative">
+                      <input
+                        id="unitSalePrice"
+                        type="number"
+                        step="0.001"
+                        min={0}
+                        inputMode="decimal"
+                        className={cn(fieldClass, "pr-12")}
+                        value={unitSalePrice}
+                        onChange={(e) => setUnitSalePrice(e.target.value)}
+                        placeholder={price || "0"}
+                      />
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
+                        DT
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <FieldLabel htmlFor="deliveryFee">Frais livraison</FieldLabel>
+                    <div className="relative">
+                      <input
+                        id="deliveryFee"
+                        type="number"
+                        step="0.001"
+                        min={0}
+                        inputMode="decimal"
+                        className={cn(fieldClass, "pr-12")}
+                        value={deliveryFee}
+                        onChange={(e) => setDeliveryFee(e.target.value)}
+                      />
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
+                        DT
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <FieldLabel htmlFor="returnFee">Frais retour</FieldLabel>
+                    <div className="relative">
+                      <input
+                        id="returnFee"
+                        type="number"
+                        step="0.001"
+                        min={0}
+                        inputMode="decimal"
+                        className={cn(fieldClass, "pr-12")}
+                        value={returnFee}
+                        onChange={(e) => setReturnFee(e.target.value)}
+                      />
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
+                        DT
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {(() => {
+                  const cod = Number(price);
+                  const sale = Number(unitSalePrice || price);
+                  const fee = Number(deliveryFee || 0);
+                  if (!Number.isFinite(cod) || !Number.isFinite(sale)) return null;
+                  const profitIfDelivered = roundMoney(sale - fee);
+                  const net = netPayoutOf({
+                    price: cod,
+                    deliveryFee: fee,
+                    status: "LIVRES",
+                  });
+                  return (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ops-ink/60">
+                      <span>
+                        Profit si livré ·{" "}
+                        <strong className="text-ops-ink tabular-nums">
+                          {formatMoney(profitIfDelivered)}
+                        </strong>
+                      </span>
+                      <span>
+                        Net versement ·{" "}
+                        <strong className="text-ops-ink tabular-nums">
+                          {formatMoney(net)}
+                        </strong>
+                      </span>
+                      <span>
+                        Si retour ·{" "}
+                        <strong className="text-ops-ink tabular-nums">
+                          {formatMoney(
+                            -roundMoney(fee + Number(returnFee || 0)),
+                          )}
+                        </strong>
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : null}
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ops-card bg-ops-page/40 px-3.5 py-3">
+              <input
+                type="checkbox"
+                checked={includeArticle}
+                onChange={(e) => {
+                  setIncludeArticle(e.target.checked);
+                  if (!e.target.checked) {
+                    setProductType("");
+                    setProductTypeOther("");
+                  }
+                }}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#991211]"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-ops-ink">
+                  Ajouter un article (optionnel)
+                </span>
+                <span className="mt-0.5 block text-[12px] text-ops-ink/45">
+                  Type, couleur, taille — sinon le colis est créé sans
+                  désignation.
+                </span>
+              </span>
+            </label>
+
+            {includeArticle ? (
+              <div className="space-y-4 rounded-xl border border-ops-card bg-ops-page/40 p-3.5">
+                <div>
+                  <FieldLabel htmlFor="productType">Type de produit</FieldLabel>
+                  <select
+                    id="productType"
+                    name="productType"
+                    className={fieldClass}
+                    value={productType}
+                    onChange={(e) => {
+                      setProductType(e.target.value);
+                      if (e.target.value !== "Autre") setProductTypeOther("");
+                    }}
+                  >
+                    <option value="">Sélectionnez un type</option>
+                    {typeOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {productType === "Autre" ? (
+                  <div>
+                    <FieldLabel htmlFor="productTypeOther">
+                      Précisez le type
+                    </FieldLabel>
+                    <input
+                      id="productTypeOther"
+                      name="productTypeOther"
+                      minLength={2}
+                      className={fieldClass}
+                      value={productTypeOther}
+                      onChange={(e) => setProductTypeOther(e.target.value)}
+                      placeholder="Ex. meuble, pièces auto…"
+                    />
+                  </div>
+                ) : null}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <FieldLabel htmlFor="color-main">Couleur</FieldLabel>
+                    <input
+                      id="color-main"
+                      className={fieldClass}
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      placeholder="Ex. noir…"
+                      maxLength={80}
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel htmlFor="size-main">Taille</FieldLabel>
+                    <input
+                      id="size-main"
+                      className={fieldClass}
+                      value={size}
+                      onChange={(e) => setSize(e.target.value)}
+                      placeholder="Ex. M, 42…"
+                      maxLength={80}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {parcelInputDefs.length > 0 ? (
+              <div className="space-y-3 rounded-xl border border-ops-accent/25 bg-ops-accent/[0.04] p-3.5">
+                <div>
+                  <p className="text-sm font-semibold text-ops-ink">
+                    Vos champs (paramètres)
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-ops-ink/45">
+                    Définis dans Paramètres — imprimés sur le bordereau.
+                  </p>
+                </div>
+                {parcelInputDefs.map((def) => (
+                  <div key={def.id}>
+                    <FieldLabel htmlFor={`custom-${def.id}`}>
+                      {def.required ? `${def.label} *` : def.label}
+                    </FieldLabel>
+                    <input
+                      id={`custom-${def.id}`}
+                      className={fieldClass}
+                      value={customInputValues[def.id] ?? ""}
+                      onChange={(e) =>
+                        setCustomInputValues((prev) => ({
+                          ...prev,
+                          [def.id]: e.target.value,
+                        }))
+                      }
+                      placeholder={def.label}
+                      maxLength={120}
+                      required={def.required}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : isSender ? (
+              <p className="text-[12px] text-ops-ink/40">
+                Besoin d’autres champs (réf., marque…) ? Ajoutez-les dans{" "}
+                <span className="font-semibold text-ops-ink/55">Paramètres</span>
+                .
+              </p>
+            ) : null}
+
+            {isSender ? (
               <>
                 <button
                   type="button"
                   onClick={() => setParcelAdvancedOpen((v) => !v)}
                   className="flex w-full items-center justify-between rounded-xl border border-ops-card bg-ops-page/50 px-3.5 py-3 text-left text-sm font-semibold text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-ink"
                 >
-                  Options (articles, couleur, taille, essai…)
+                  Options (quantité, essai, fragile…)
                   <ChevronDown
                     className={cn(
                       "h-4 w-4 shrink-0 transition",
@@ -1423,20 +1670,35 @@ export function CreateParcelWizard({
               </ReviewCard>
               <ReviewCard title="Colis">
                 <p className="font-semibold text-ops-ink">
-                  {productType === "Autre"
-                    ? productTypeOther
-                    : productType}
+                  {includeArticle
+                    ? productType === "Autre"
+                      ? productTypeOther || "—"
+                      : productType || "—"
+                    : "Sans article précisé"}
                 </p>
                 <p className="text-ops-ink/60">
                   {price ? formatMoney(Number(price)) : "—"} ·{" "}
                   {articleCount || 1} art. · {parcelCount || 1} colis
                 </p>
-                {color.trim() || size.trim() ? (
+                {includeArticle && (color.trim() || size.trim()) ? (
                   <p className="mt-1 text-ops-ink/45">
                     {[
                       color.trim() ? `Couleur : ${color.trim()}` : null,
                       size.trim() ? `Taille : ${size.trim()}` : null,
                     ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+                {parcelInputDefs.some((d) =>
+                  (customInputValues[d.id] ?? "").trim(),
+                ) ? (
+                  <p className="mt-1 text-ops-ink/45">
+                    {parcelInputDefs
+                      .map((d) => {
+                        const v = (customInputValues[d.id] ?? "").trim();
+                        return v ? `${d.label} : ${v}` : null;
+                      })
                       .filter(Boolean)
                       .join(" · ")}
                   </p>

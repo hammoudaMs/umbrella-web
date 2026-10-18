@@ -23,6 +23,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import { ClientParcelEditor } from "@/components/ClientParcelEditor";
+import { ReturnVerificationActions } from "@/components/ReturnVerificationActions";
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
 import {
   Badge,
@@ -416,6 +417,26 @@ export function ParcelDetailView({
 
       {role === "CLIENT" ? (
         <ClientParcelEditor parcel={parcel} onSaved={() => void reload()} />
+      ) : null}
+
+      <ReturnVerificationActions
+        parcel={parcel}
+        role={role}
+        onDone={() => void reload()}
+      />
+
+      {parcel.statusReason &&
+      (parcel.status === "A_VERIFIER" ||
+        parcel.status === "LIVRAISON_ANNULEE" ||
+        parcel.status.startsWith("RETOUR_")) ? (
+        <Panel className="border-amber-500/25 bg-amber-500/[0.06]">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ops-ink/45">
+            Motif / cause
+          </p>
+          <p className="mt-1 text-sm font-semibold text-ops-ink">
+            {parcel.statusReason}
+          </p>
+        </Panel>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">

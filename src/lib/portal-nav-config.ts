@@ -18,6 +18,7 @@ import {
   Ticket,
   Truck,
   Users,
+  Wallet,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
@@ -124,6 +125,9 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: ScanLine,
         mobilePrimary: true,
       },
+      { href: `${base}/zones`, labelKey: "nav.zones", icon: MapPin },
+      { href: `${base}/finances`, labelKey: "nav.finances", icon: Wallet },
+      { href: `${base}/analytics`, labelKey: "nav.analytics", icon: BarChart3 },
       { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
       {
         href: `${base}/tickets`,
