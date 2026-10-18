@@ -39,6 +39,7 @@ import { DELIVERY_WINDOWS } from "@/lib/delivery-windows";
 import {
   canOpenParcelTicket,
   formatTnd,
+  toAmount,
   type DeliveryMode,
   type Parcel,
   type TimelineEntry,
@@ -55,12 +56,29 @@ import {
   canSwitchDeliveryMode,
   type AppRole,
 } from "@/lib/roles";
+import {
+  deliveryFeeOf,
+  isDeliveredStatus,
+  isReturnStatus,
+  parcelProfitOf,
+  returnFeeOf,
+  salePriceOf,
+} from "@/lib/sender-finance";
 import { useStatusLabel } from "@/i18n/hooks";
+import { useT } from "@/i18n/locale-context";
 import type { StatusCategory } from "@/lib/status-categories";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import { useAuth } from "@/lib/auth-context";
 import { useApi, useApiQuery } from "@/lib/use-api";
 import { cn } from "@/lib/cn";
+
+function roleSeesParcelFinance(role: AppRole | undefined): boolean {
+  return (
+    role === "EXPEDITEUR" ||
+    role === "SUPER_ADMIN" ||
+    role === "ADMIN"
+  );
+}
 
 const SENDER_EDITABLE = ["EN_ATTENTE", "NON_SERIEUX"];
 
@@ -157,8 +175,10 @@ export function ParcelDetailView({
   portalBase: string;
 }) {
   const { session } = useAuth();
+  const t = useT();
   const statusLabelFn = useStatusLabel();
   const role = session?.user.role;
+  const showFinance = roleSeesParcelFinance(role);
   const showModes = canSeeDeliveryMode(role);
   const showOps = roleCanSeeOps(role);
   const request = useApi();
@@ -234,6 +254,19 @@ export function ParcelDetailView({
     role,
     categories: statusCategories,
   });
+  const money = {
+    price: toAmount(parcel.price),
+    unitSalePrice:
+      parcel.unitSalePrice != null ? toAmount(parcel.unitSalePrice) : null,
+    deliveryFee: toAmount(parcel.deliveryFee ?? 0),
+    returnFee: toAmount(parcel.returnFee ?? 0),
+    status: parcel.status,
+  };
+  const sale = salePriceOf(money);
+  const base = money.price;
+  const deliveryFee = deliveryFeeOf(money);
+  const returnFee = returnFeeOf(money);
+  const profit = parcelProfitOf(money);
   const dispatched = isDispatched(parcel);
   const timeline = sortedTimeline(parcel.timeline, parcel.createdAt);
   const lastActor = lastTimelineActor(parcel.timeline);
@@ -330,10 +363,84 @@ export function ParcelDetailView({
             {parcel.isFragile ? <Badge tone="danger">Fragile</Badge> : null}
             {parcel.isExchange ? <Badge tone="gold">Échange</Badge> : null}
           </div>
-          <p className="font-display text-2xl font-extrabold text-ops-accent">
-            {formatTnd(parcel.price)}
-          </p>
+          {!showFinance ? (
+            <p className="font-display text-2xl font-extrabold text-ops-accent">
+              {formatTnd(parcel.price)}
+            </p>
+          ) : null}
         </div>
+
+        {showFinance ? (
+          <div className="mt-4 rounded-2xl border border-ops-card bg-ops-page/40 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ops-ink/40">
+              {t("finances.parcelFinanceTitle")}
+            </p>
+            <p className="mt-1 text-xs text-ops-ink/40">{t("finances.productName")}</p>
+            <p className="font-display text-base font-bold text-ops-ink">
+              {parcel.designation?.trim() ||
+                parcel.notes?.trim() ||
+                t("finances.productFallback")}
+            </p>
+            <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-ops-ink/40">
+                  {t("finances.colSale")}
+                </dt>
+                <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-ops-ink">
+                  {formatTnd(sale)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-ops-ink/40">
+                  {t("finances.colCod")}
+                </dt>
+                <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-ops-ink">
+                  {formatTnd(base)}
+                </dd>
+                <p className="mt-0.5 text-[10px] text-ops-ink/35">
+                  {t("finances.basePriceHint")}
+                </p>
+              </div>
+              <div>
+                <dt className="text-xs text-ops-ink/40">
+                  {t("finances.colDelivery")}
+                </dt>
+                <dd className="mt-0.5 font-display text-lg font-bold tabular-nums text-ops-ink">
+                  {formatTnd(deliveryFee)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-ops-ink/40">
+                  {t("finances.profitCol")}
+                </dt>
+                <dd
+                  className={cn(
+                    "mt-0.5 font-display text-lg font-bold tabular-nums",
+                    profit == null
+                      ? "text-ops-ink/40"
+                      : profit >= 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-ops-accent",
+                  )}
+                >
+                  {profit != null ? formatTnd(profit) : "—"}
+                </dd>
+                <p className="mt-0.5 text-[10px] text-ops-ink/35">
+                  {isDeliveredStatus(parcel.status)
+                    ? t("finances.profitDeliveredHint")
+                    : isReturnStatus(parcel.status)
+                      ? t("finances.profitReturnHint")
+                      : t("finances.profitPendingHint")}
+                </p>
+              </div>
+            </dl>
+            {isReturnStatus(parcel.status) && returnFee > 0 ? (
+              <p className="mt-3 text-xs text-ops-ink/45">
+                {t("finances.colReturn")}: {formatTnd(returnFee)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {showOps ? (
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

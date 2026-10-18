@@ -14,6 +14,10 @@ import {
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
 import { Modal } from "@/components/Modal";
 import {
+  SenderMoneyHero,
+  SenderSection,
+} from "@/components/SenderMoneyHero";
+import {
   Badge,
   Button,
   EmptyState,
@@ -22,7 +26,6 @@ import {
   Panel,
   SegmentedTabs,
   StatCard,
-  StatusBadge,
   TableCard,
   tableClass,
   tdClass,
@@ -31,6 +34,7 @@ import {
   trClass,
   type BadgeTone,
 } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { useT } from "@/i18n/locale-context";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -279,27 +283,35 @@ export function PaymentsManager({
   const senderMode = canCreate && !canModerate;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={senderMode ? t("payments.eyebrow") : undefined}
-        title={t("payments.title")}
-        description={
-          canModerate ? t("payments.descModerate") : t("payments.descCreate")
-        }
-        actions={
-          canBatch ? (
-            <Button
-              type="button"
-              variant="gold"
-              icon={Sparkles}
-              loading={batchBusy}
-              onClick={() => void runExpertBatch()}
-            >
-              {t("payments.batchExpert24h")}
-            </Button>
-          ) : undefined
-        }
-      />
+    <div className={cn(senderMode ? "mx-auto max-w-3xl space-y-12 px-1 pb-10" : "space-y-6")}>
+      {senderMode ? (
+        <header className="space-y-2">
+          <h1 className="font-display text-2xl font-extrabold tracking-tight text-ops-ink sm:text-3xl">
+            {t("payments.title")}
+          </h1>
+          <p className="max-w-lg text-sm leading-relaxed text-ops-ink/45">
+            {t("payments.descCreate")}
+          </p>
+        </header>
+      ) : (
+        <PageHeader
+          title={t("payments.title")}
+          description={t("payments.descModerate")}
+          actions={
+            canBatch ? (
+              <Button
+                type="button"
+                variant="gold"
+                icon={Sparkles}
+                loading={batchBusy}
+                onClick={() => void runExpertBatch()}
+              >
+                {t("payments.batchExpert24h")}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
 
       {loadError ? <ErrorBanner message={loadError} onRetry={() => void reloadAll()} /> : null}
 
@@ -310,51 +322,25 @@ export function PaymentsManager({
       ) : null}
 
       {senderMode ? (
-        <section className="overflow-hidden rounded-2xl border border-ops-card bg-ops-surface shadow-ops">
-          <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              {
-                label: t("payments.available"),
-                value: formatTnd(totals.eligible),
-                hint: t("payments.eligibleHint", { count: eligible.length }),
-                accent: "text-emerald-700 dark:text-emerald-300",
-              },
-              {
-                label: t("payments.inDemand"),
-                value: formatTnd(totals.enDemande),
-                hint: t("payments.statusEnDemande"),
-                accent: "text-ops-ink",
-              },
-              {
-                label: t("payments.inValidation"),
-                value: formatTnd(totals.enCours),
-                hint: t("payments.statusValideFinance"),
-                accent: "text-ops-ink",
-              },
-              {
-                label: t("payments.disbursed"),
-                value: formatTnd(totals.paye),
-                hint: t("payments.statusPaye"),
-                accent: "text-ops-ink",
-              },
-            ].map((card) => (
-              <div
-                key={card.label}
-                className="border-b border-ops-card px-5 py-4 last:border-b-0 sm:odd:border-e lg:border-b-0 lg:border-e lg:last:border-e-0"
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ops-ink/45">
-                  {card.label}
-                </p>
-                <p
-                  className={`mt-1.5 font-display text-2xl font-extrabold tabular-nums ${card.accent}`}
-                >
-                  {card.value}
-                </p>
-                <p className="mt-1 text-xs text-ops-ink/45">{card.hint}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        <SenderMoneyHero
+          label={t("payments.available")}
+          value={formatTnd(totals.eligible)}
+          hint={t("payments.eligibleHint", { count: eligible.length })}
+          metrics={[
+            {
+              label: t("payments.inDemand"),
+              value: formatTnd(totals.enDemande),
+            },
+            {
+              label: t("payments.inValidation"),
+              value: formatTnd(totals.enCours),
+            },
+            {
+              label: t("payments.disbursed"),
+              value: formatTnd(totals.paye),
+            },
+          ]}
+        />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {canCreate ? (
@@ -387,107 +373,109 @@ export function PaymentsManager({
       )}
 
       {canCreate ? (
-        <Panel className="space-y-4 border-ops-accent/20 bg-gradient-to-b from-ops-accent/[0.04] to-ops-surface">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ops-accent/80">
-                {t("payments.eyebrow")}
-              </p>
-              <h2 className="font-display text-lg font-bold text-ops-ink">
-                {t("payments.newRequest")}
-              </h2>
-              <p className="text-sm text-ops-ink/50">{t("payments.newRequestHint")}</p>
-            </div>
-            {eligible.length > 0 ? (
-              <label className="inline-flex items-center gap-2 rounded-full border border-ops-card bg-ops-surface px-3 py-1.5 text-sm font-medium text-ops-ink">
+        <SenderSection
+          title={t("payments.newRequest")}
+          description={t("payments.newRequestHint")}
+          action={
+            eligible.length > 0 ? (
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-ops-ink/70">
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-ops-accent"
                   checked={allSelected}
-                  onChange={() => setSelected(allSelected ? [] : eligible.map((p) => p.id))}
+                  onChange={() =>
+                    setSelected(allSelected ? [] : eligible.map((p) => p.id))
+                  }
                 />
                 {t("payments.selectAll")}
               </label>
-            ) : null}
-          </div>
-
-          {eligible.length === 0 ? (
-            parcels.loading ? (
-              <p className="rounded-xl bg-ops-ink/[0.05] px-4 py-6 text-center text-sm text-ops-ink/50">
-                {t("common.loading")}
-              </p>
+            ) : null
+          }
+        >
+          <div className="overflow-hidden rounded-3xl border border-ops-card bg-ops-surface">
+            {eligible.length === 0 ? (
+              parcels.loading ? (
+                <p className="px-5 py-10 text-center text-sm text-ops-ink/45">
+                  {t("common.loading")}
+                </p>
+              ) : (
+                <div className="px-5 py-10">
+                  <EmptyState
+                    icon={HandCoins}
+                    title={t("payments.noEligible")}
+                    description={t("payments.noEligibleHint")}
+                  />
+                </div>
+              )
             ) : (
-              <EmptyState
-                icon={HandCoins}
-                title={t("payments.noEligible")}
-                description={t("payments.noEligibleHint")}
-              />
-            )
-          ) : (
-            <ul className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
-              {eligible.map((p) => {
-                const checked = selected.includes(p.id);
-                return (
-                  <li key={p.id}>
-                    <label
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition ${
-                        checked
-                          ? "border-ops-accent bg-ops-accent/10 shadow-sm"
-                          : "border-ops-card bg-ops-surface hover:border-ops-accent/40"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-ops-accent"
-                        checked={checked}
-                        onChange={() => toggle(p.id)}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-mono text-xs font-semibold text-ops-ink">
-                          {p.code ?? `#${p.id}`}
-                        </span>
-                        <span className="block truncate text-xs text-ops-ink/50">
-                          {p.recipientName} · {p.city}
-                        </span>
-                      </span>
-                      <span className="text-right">
-                        <span className="block font-semibold tabular-nums text-ops-ink">
-                          {formatTnd(parcelNet(p))}
-                        </span>
-                        {toAmount(p.deliveryFee ?? 0) > 0 ? (
-                          <span className="block text-[10px] text-ops-ink/40">
-                            COD {formatTnd(p.price)} − liv.
+              <ul className="max-h-[22rem] divide-y divide-ops-card overflow-y-auto">
+                {eligible.map((p) => {
+                  const checked = selected.includes(p.id);
+                  return (
+                    <li key={p.id}>
+                      <label
+                        className={cn(
+                          "flex cursor-pointer items-center gap-3 px-4 py-3.5 text-sm transition sm:px-5",
+                          checked
+                            ? "bg-ops-accent/[0.06]"
+                            : "hover:bg-ops-page/60",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-ops-accent"
+                          checked={checked}
+                          onChange={() => toggle(p.id)}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-mono text-xs font-semibold text-ops-ink">
+                            {p.code ?? `#${p.id}`}
                           </span>
-                        ) : null}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                          <span className="mt-0.5 block truncate text-xs text-ops-ink/45">
+                            {p.recipientName} · {p.city}
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <span className="block font-display text-base font-bold tabular-nums text-ops-ink">
+                            {formatTnd(parcelNet(p))}
+                          </span>
+                          {toAmount(p.deliveryFee ?? 0) > 0 ? (
+                            <span className="block text-[10px] text-ops-ink/35">
+                              COD {formatTnd(p.price)} − liv.
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
 
-          <div className="flex flex-col gap-3 border-t border-ops-card/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-ops-ink/50">
-              {t("payments.selectedSummary", {
-                count: selected.length,
-                amount: formatTnd(selectedTotal),
-              })}
-            </p>
-            <Button
-              icon={HandCoins}
-              loading={submitting}
-              disabled={selected.length === 0}
-              onClick={() => void onRequest()}
-            >
-              {t("payments.requestPayment")}
-            </Button>
+            <div className="flex flex-col gap-3 border-t border-ops-card bg-ops-page/40 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <p className="text-sm text-ops-ink/50">
+                {t("payments.selectedSummary", {
+                  count: selected.length,
+                  amount: formatTnd(selectedTotal),
+                })}
+              </p>
+              <Button
+                icon={HandCoins}
+                loading={submitting}
+                disabled={selected.length === 0}
+                onClick={() => void onRequest()}
+              >
+                {t("payments.requestPayment")}
+              </Button>
+            </div>
           </div>
-        </Panel>
+        </SenderSection>
       ) : null}
 
-      <TableCard
-        toolbar={
+      <SenderSection
+        title={senderMode ? t("payments.historyTitle") : t("payments.filterRequests")}
+        description={senderMode ? t("payments.emptyDescription") : undefined}
+        action={
           <SegmentedTabs<Filter>
             label={t("payments.filterRequests")}
             value={filter}
@@ -501,12 +489,14 @@ export function PaymentsManager({
               ...PIPELINE.map((s) => ({
                 value: s,
                 label: statusLabel(s),
-                count: paymentList.filter((p) => normalizeStatus(p.status) === s).length,
+                count: paymentList.filter((p) => normalizeStatus(p.status) === s)
+                  .length,
               })),
             ]}
           />
         }
       >
+      <TableCard>
         {payments.loading && paymentList.length === 0 ? (
           <div className="space-y-2 p-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -762,6 +752,7 @@ export function PaymentsManager({
           </>
         )}
       </TableCard>
+      </SenderSection>
 
       <PaymentDetailModal
         payment={detail}
@@ -777,12 +768,6 @@ export function PaymentsManager({
             : t("payments.viewDetail")
         }
       />
-
-      {canCreate && eligible.length > 0 ? (
-        <p className="text-xs text-ops-ink/50">
-          Statuts éligibles : <StatusBadge status="LIVRES" /> <StatusBadge status="LIVRES_PAYES" />
-        </p>
-      ) : null}
     </div>
   );
 }

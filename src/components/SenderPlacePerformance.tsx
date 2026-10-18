@@ -7,7 +7,6 @@ import { Modal } from "@/components/Modal";
 import {
   Badge,
   EmptyState,
-  Panel,
   SearchInput,
   StatusBadge,
   tableClass,
@@ -24,6 +23,7 @@ import {
   citiesForGovernorate,
   governoratesWithCities,
 } from "@/lib/tunisia-address";
+import { cn } from "@/lib/cn";
 
 export type PlaceRow = {
   key: string;
@@ -42,7 +42,7 @@ export type PlaceRow = {
 type GroupBy = "city" | "governorate";
 
 const fieldClass =
-  "w-full rounded-xl border border-ops-card bg-ops-page px-3 py-2.5 text-sm text-ops-ink outline-none ring-ops-accent focus:ring-2 disabled:opacity-50";
+  "w-full rounded-xl border border-ops-card bg-ops-surface px-3 py-2.5 text-sm text-ops-ink outline-none ring-ops-accent focus:ring-2 disabled:opacity-50";
 
 function isActiveParcel(p: Parcel): boolean {
   return p.status !== "SUPPRIME";
@@ -105,16 +105,15 @@ function buildPlaces(parcels: Parcel[], groupBy: GroupBy): PlaceRow[] {
   }));
 }
 
-/** Centered bar: 0 in the middle, green → right (+), red → left (−). */
 function ScoreBar({ score, maxAbs }: { score: number; maxAbs: number }) {
   const denom = Math.max(1, maxAbs);
   const ratio = Math.min(1, Math.abs(score) / denom);
   const widthPct = ratio * 50;
 
   return (
-    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-ops-ink/[0.08]">
+    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-ops-ink/[0.08]">
       <span
-        className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-ops-ink/25"
+        className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-ops-ink/20"
         aria-hidden
       />
       {score > 0 ? (
@@ -133,9 +132,6 @@ function ScoreBar({ score, maxAbs }: { score: number; maxAbs: number }) {
           }}
         />
       ) : null}
-      {score === 0 ? (
-        <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ops-ink/35" />
-      ) : null}
     </div>
   );
 }
@@ -151,9 +147,6 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
   const [governorate, setGovernorate] = useState("");
   const [city, setCity] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("city");
-  const [stockFilter, setStockFilter] = useState<"all" | "open" | "closed">(
-    "all",
-  );
   const [detail, setDetail] = useState<PlaceRow | null>(null);
 
   const cityOptions = useMemo(
@@ -167,12 +160,6 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
       if (!isActiveParcel(p)) return false;
       if (governorate && p.governorate !== governorate) return false;
       if (city && p.city !== city) return false;
-      const closed =
-        isDeliveredStatus(p.status) ||
-        p.status === "RETOUR_RECU" ||
-        p.status === "REMBOURSES";
-      if (stockFilter === "open" && closed) return false;
-      if (stockFilter === "closed" && !closed) return false;
       if (q) {
         const hay = [p.city, p.governorate, p.code, p.recipientName]
           .filter(Boolean)
@@ -182,7 +169,7 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
       }
       return true;
     });
-  }, [parcels, query, governorate, city, stockFilter]);
+  }, [parcels, query, governorate, city]);
 
   const places = useMemo(
     () => buildPlaces(filteredParcels, groupBy),
@@ -212,20 +199,16 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
     setQuery("");
     setGovernorate("");
     setCity("");
-    setStockFilter("all");
     setGroupBy("city");
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="font-display text-lg font-bold text-ops-ink">
-            {t("finances.placesTitle")}
-          </h2>
-          <p className="text-sm text-ops-ink/45">{t("finances.placesLead")}</p>
-        </div>
-        <div className="inline-flex rounded-xl border border-ops-card bg-ops-ink/[0.04] p-1">
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ops-ink">
+          {t("finances.placesTitle")}
+        </h2>
+        <div className="inline-flex rounded-lg border border-ops-card p-0.5">
           {(
             [
               ["city", t("finances.groupCity")],
@@ -236,11 +219,12 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
               key={value}
               type="button"
               onClick={() => setGroupBy(value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-semibold transition",
                 groupBy === value
-                  ? "bg-ops-surface text-ops-accent shadow-sm"
-                  : "text-ops-ink/45 hover:text-ops-ink"
-              }`}
+                  ? "bg-ops-accent text-white"
+                  : "text-ops-ink/45",
+              )}
             >
               {label}
             </button>
@@ -248,83 +232,51 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
         </div>
       </div>
 
-      <Panel className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-ops-ink">
-            {t("finances.filters")}
-          </p>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="text-xs font-semibold text-ops-ink/45 transition hover:text-ops-accent"
-          >
-            {t("finances.resetFilters")}
-          </button>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder={t("finances.searchPlace")}
-            className="sm:col-span-2 lg:col-span-1"
-          />
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ops-ink/40">
-              {t("finances.filterGov")}
-            </label>
-            <select
-              className={fieldClass}
-              value={governorate}
-              onChange={(e) => {
-                setGovernorate(e.target.value);
-                setCity("");
-              }}
-            >
-              <option value="">{t("finances.allGov")}</option>
-              {Object.keys(governoratesWithCities).map((gov) => (
-                <option key={gov} value={gov}>
-                  {displayGovernorate(gov)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ops-ink/40">
-              {t("finances.filterCity")}
-            </label>
-            <select
-              className={fieldClass}
-              value={city}
-              disabled={!governorate}
-              onChange={(e) => setCity(e.target.value)}
-            >
-              <option value="">{t("finances.allCities")}</option>
-              {cityOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ops-ink/40">
-              {t("finances.filterStock")}
-            </label>
-            <select
-              className={fieldClass}
-              value={stockFilter}
-              onChange={(e) =>
-                setStockFilter(e.target.value as "all" | "open" | "closed")
-              }
-            >
-              <option value="all">{t("finances.stockAll")}</option>
-              <option value="open">{t("finances.stockOpenOnly")}</option>
-              <option value="closed">{t("finances.stockClosedOnly")}</option>
-            </select>
-          </div>
-        </div>
-        <p className="text-[11px] text-ops-ink/40">{t("finances.scoreLegend")}</p>
-      </Panel>
+      <div className="grid grid-cols-2 gap-1.5">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder={t("finances.searchPlace")}
+          className="col-span-2"
+        />
+        <select
+          aria-label={t("finances.filterGov")}
+          className={fieldClass}
+          value={governorate}
+          onChange={(e) => {
+            setGovernorate(e.target.value);
+            setCity("");
+          }}
+        >
+          <option value="">{t("finances.allGov")}</option>
+          {Object.keys(governoratesWithCities).map((gov) => (
+            <option key={gov} value={gov}>
+              {displayGovernorate(gov)}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={t("finances.filterCity")}
+          className={fieldClass}
+          value={city}
+          disabled={!governorate}
+          onChange={(e) => setCity(e.target.value)}
+        >
+          <option value="">{t("finances.allCities")}</option>
+          {cityOptions.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="col-span-2 text-left text-[11px] font-semibold text-ops-ink/40"
+        >
+          {t("finances.resetFilters")}
+        </button>
+      </div>
 
       {places.length === 0 ? (
         <EmptyState
@@ -362,10 +314,12 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
       )}
 
       {places.length > 0 ? (
-        <Panel className="space-y-3">
-          <p className="text-sm font-semibold text-ops-ink">
-            {t("finances.allPlaces", { count: ranked.all.length })}
-          </p>
+        <div className="overflow-hidden rounded-3xl border border-ops-card bg-ops-surface">
+          <div className="border-b border-ops-card px-5 py-3.5">
+            <p className="text-sm font-semibold text-ops-ink">
+              {t("finances.allPlaces", { count: ranked.all.length })}
+            </p>
+          </div>
           <ul className="divide-y divide-ops-card">
             {ranked.all.map((row) => (
               <PlaceRowItem
@@ -377,7 +331,7 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
               />
             ))}
           </ul>
-        </Panel>
+        </div>
       ) : null}
 
       <Modal
@@ -396,8 +350,8 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
         size="xl"
       >
         {detail ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <MiniStat
                 label={t("finances.finished")}
                 value={String(detail.finished)}
@@ -423,10 +377,7 @@ export function SenderPlacePerformance({ parcels }: { parcels: Parcel[] }) {
               />
             </div>
             <ScoreBar score={detail.score} maxAbs={maxAbs} />
-            <p className="text-center text-xs text-ops-ink/45">
-              {detail.finished}/{detail.unfinished} · {scoreLabel(detail.score)}
-            </p>
-            <div className="overflow-x-auto rounded-xl border border-ops-card">
+            <div className="overflow-x-auto rounded-2xl border border-ops-card">
               <table className={tableClass}>
                 <thead className={theadClass}>
                   <tr>
@@ -486,12 +437,15 @@ function MiniStat({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-ops-card bg-ops-page/50 px-3 py-2.5">
+    <div>
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ops-ink/40">
         {label}
       </p>
       <p
-        className={`mt-0.5 font-display text-lg font-extrabold tabular-nums ${accent ?? "text-ops-ink"}`}
+        className={cn(
+          "mt-1 font-display text-xl font-extrabold tabular-nums",
+          accent ?? "text-ops-ink",
+        )}
       >
         {value}
       </p>
@@ -519,23 +473,24 @@ function PlaceList({
   t: ReturnType<typeof useT>;
 }) {
   return (
-    <Panel className="space-y-3">
-      <div className="flex items-center gap-2">
+    <div className="overflow-hidden rounded-3xl border border-ops-card bg-ops-surface">
+      <div className="flex items-center gap-2.5 border-b border-ops-card px-5 py-3.5">
         <span
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-full",
             tone === "good"
               ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-              : "bg-ops-accent/10 text-ops-accent"
-          }`}
+              : "bg-ops-accent/10 text-ops-accent",
+          )}
         >
           <Icon className="h-4 w-4" aria-hidden />
         </span>
         <h3 className="font-display text-base font-bold text-ops-ink">{title}</h3>
       </div>
       {rows.length === 0 ? (
-        <p className="py-6 text-center text-sm text-ops-ink/40">{empty}</p>
+        <p className="px-5 py-8 text-center text-sm text-ops-ink/40">{empty}</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-ops-card">
           {rows.map((row) => (
             <PlaceRowItem
               key={row.key}
@@ -548,7 +503,7 @@ function PlaceList({
           ))}
         </ul>
       )}
-    </Panel>
+    </div>
   );
 }
 
@@ -573,9 +528,10 @@ function PlaceRowItem({
       <button
         type="button"
         onClick={onOpen}
-        className={`group w-full rounded-xl border border-ops-card bg-ops-surface text-left transition hover:border-ops-accent/35 hover:bg-ops-page/40 ${
-          compact ? "px-3 py-2.5" : "px-3.5 py-3"
-        }`}
+        className={cn(
+          "group w-full text-left transition hover:bg-ops-page/50",
+          compact ? "px-4 py-3" : "px-5 py-3.5",
+        )}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -593,22 +549,20 @@ function PlaceRowItem({
             <Badge tone={positive ? "success" : negative ? "danger" : "neutral"}>
               {scoreLabel(row.score)}
             </Badge>
-            <span className="tabular-nums text-xs font-semibold text-ops-ink/55">
+            <span className="tabular-nums text-xs font-semibold text-ops-ink/50">
               {row.finished}/{row.unfinished}
             </span>
-            <ChevronRight className="h-4 w-4 text-ops-ink/25 transition group-hover:text-ops-accent" />
+            <ChevronRight className="h-4 w-4 text-ops-ink/20 transition group-hover:text-ops-accent" />
           </div>
         </div>
         <div className="mt-2.5">
           <ScoreBar score={row.score} maxAbs={maxAbs} />
         </div>
-        <p className="mt-1.5 text-[11px] text-ops-ink/40">
-          {t("finances.finished")}: {row.finished} · {t("finances.unfinished")}:{" "}
-          {row.unfinished}
-          {row.valueOpen > 0
-            ? ` · ${t("finances.openValue")} ${formatTnd(row.valueOpen)}`
-            : ""}
-        </p>
+        {!compact && row.valueOpen > 0 ? (
+          <p className="mt-1.5 text-[11px] text-ops-ink/40">
+            {t("finances.openValue")} {formatTnd(row.valueOpen)}
+          </p>
+        ) : null}
       </button>
     </li>
   );
