@@ -614,100 +614,90 @@ export function ParcelDetailTable({
                       style={{ backgroundColor: tone }}
                       aria-hidden
                     />
-                    <div className="space-y-1.5 py-2.5 pe-3 ps-3.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 items-start gap-2">
-                          {multiSelect ? (
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={() => toggleRow(row.id)}
-                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-ops-card accent-ops-accent"
-                              aria-label={`Sélectionner ${code}`}
-                            />
-                          ) : null}
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                              {href ? (
-                                <Link
-                                  href={href}
-                                  className="font-mono text-[11px] font-medium tracking-[0.04em] text-ops-ink/40 transition hover:text-ops-accent"
-                                >
-                                  {code}
-                                </Link>
-                              ) : (
-                                <p className="font-mono text-[11px] font-medium tracking-[0.04em] text-ops-ink/40">
-                                  {code}
-                                </p>
-                              )}
-                              <p
-                                className="truncate text-[11px] font-semibold"
-                                style={{ color: tone }}
+                    <div className="space-y-2 py-2.5 pe-2.5 ps-3.5">
+                      <div className="flex items-start gap-2">
+                        {multiSelect ? (
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleRow(row.id)}
+                            className="mt-1 h-4 w-4 shrink-0 rounded border-ops-card accent-ops-accent"
+                            aria-label={`Sélectionner ${code}`}
+                          />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            {href ? (
+                              <Link
+                                href={href}
+                                className="truncate font-mono text-[11px] font-medium text-ops-ink/40 transition hover:text-ops-accent"
                               >
-                                {meta?.label ?? row.status}
+                                {code}
+                              </Link>
+                            ) : (
+                              <p className="truncate font-mono text-[11px] font-medium text-ops-ink/40">
+                                {code}
                               </p>
-                            </div>
-                            <p className="mt-0.5 truncate text-[14px] font-semibold leading-snug text-ops-ink">
-                              {row.recipientName}
+                            )}
+                            <p className="shrink-0 whitespace-nowrap font-display text-[14px] font-bold tabular-nums text-ops-ink">
+                              {formatTnd(row.price)}
                             </p>
                           </div>
+                          <p className="mt-0.5 truncate text-[14px] font-semibold leading-snug text-ops-ink">
+                            {row.recipientName}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span
+                              className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                              style={{
+                                color: tone,
+                                backgroundColor: `${tone}22`,
+                              }}
+                            >
+                              {meta?.label ?? row.status}
+                            </span>
+                            {row.phone ? (
+                              <a
+                                href={`tel:${row.phone}`}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-ops-accent"
+                              >
+                                <Phone className="h-3 w-3" strokeWidth={2.25} />
+                                {row.phone}
+                              </a>
+                            ) : null}
+                          </div>
+                          {addressLine ? (
+                            <p className="mt-1 truncate text-[11px] text-ops-ink/45">
+                              {addressLine}
+                            </p>
+                          ) : null}
+                          {showPartyDetails && row.sender?.name ? (
+                            <p className="mt-0.5 text-[10px] text-ops-ink/35">
+                              Exp. {row.sender.name}
+                              {row.driver?.name
+                                ? ` · Livreur ${row.driver.name}`
+                                : ""}
+                            </p>
+                          ) : row.driver?.name ? (
+                            <p className="mt-0.5 text-[10px] text-ops-ink/35">
+                              Livreur {row.driver.name}
+                            </p>
+                          ) : null}
                         </div>
-                        <p className="shrink-0 whitespace-nowrap font-display text-[14px] font-bold tabular-nums tracking-tight text-ops-ink">
-                          {formatTnd(row.price)}
-                        </p>
                       </div>
 
-                      {addressLine ? (
-                        <p className="truncate text-[11px] leading-snug text-ops-ink/50">
-                          {addressLine}
-                        </p>
-                      ) : null}
-
-                      {(row.phone || row.phone2) ? (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {row.phone ? (
-                            <a
-                              href={`tel:${row.phone}`}
-                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-ops-card bg-ops-page px-2 text-[11px] font-semibold text-ops-accent transition hover:border-ops-accent/35"
-                            >
-                              <Phone className="h-3 w-3" strokeWidth={2.25} />
-                              {row.phone}
-                            </a>
-                          ) : null}
-                          {row.phone2 ? (
-                            <a
-                              href={`tel:${row.phone2}`}
-                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-ops-card bg-ops-page px-2 text-[11px] font-medium text-ops-ink/55 transition hover:border-ops-ink/20"
-                            >
-                              <Phone className="h-3 w-3" strokeWidth={2.25} />
-                              {row.phone2}
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      {showPartyDetails && row.sender?.name ? (
-                        <p className="text-[10px] text-ops-ink/35">
-                          Exp. {row.sender.name}
-                          {row.driver?.name ? ` · Livreur ${row.driver.name}` : ""}
-                        </p>
-                      ) : row.driver?.name ? (
-                        <p className="text-[10px] text-ops-ink/35">
-                          Livreur {row.driver.name}
-                        </p>
-                      ) : null}
                       {row.statusReason &&
                       (statusFilter
                         ? REASON_VISIBLE_STATUSES.has(statusFilter as StatusKey)
                         : REASON_VISIBLE_STATUSES.has(
                             row.status as StatusKey,
                           )) ? (
-                        <p className="rounded-lg bg-ops-accent/10 px-2.5 py-1.5 text-[12px] font-medium leading-snug text-ops-accent">
+                        <p className="rounded-lg bg-ops-accent/10 px-2 py-1 text-[11px] font-medium leading-snug text-ops-accent">
                           Motif · {row.statusReason}
                         </p>
                       ) : null}
                       {multiSelect && batchPrinted ? (
-                        <p className="text-[11px] font-medium text-amber-700/80 dark:text-amber-300/70">
+                        <p className="text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70">
                           Déjà imprimé en lot — réimpression possible
                         </p>
                       ) : null}
@@ -720,58 +710,54 @@ export function ParcelDetailTable({
                         />
                       ) : null}
 
-                      <div className="flex items-center gap-1.5 border-t border-ops-card/80 pt-2">
-                        <ActionBtn
-                          label="Bordereau"
-                          onClick={() => printBordereau(row)}
-                        >
-                          <Printer className="h-5 w-5" strokeWidth={2.25} />
-                        </ActionBtn>
-                        <ActionBtn
-                          label="Copier le code"
-                          onClick={() => void copyParcelCode(row)}
-                        >
-                          <Copy className="h-5 w-5" strokeWidth={2.25} />
-                        </ActionBtn>
-                        {row.phone ? (
-                          <ActionLink label="Appeler" href={`tel:${row.phone}`}>
-                            <Phone className="h-5 w-5" strokeWidth={2.25} />
-                          </ActionLink>
-                        ) : null}
-                        {onEdit ? (
+                      <div className="flex items-center justify-between gap-1 border-t border-ops-card/80 pt-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1">
                           <ActionBtn
-                            label="Modifier"
-                            disabled={!editable}
-                            onClick={() => onEdit(row)}
+                            label="Bordereau"
+                            onClick={() => printBordereau(row)}
                           >
-                            <Pencil className="h-5 w-5" strokeWidth={2.25} />
+                            <Printer className="h-4 w-4" strokeWidth={2.25} />
                           </ActionBtn>
-                        ) : null}
-                        {showTicketAction && ticketHref ? (
-                          <ActionLink label={ticketLabel} href={ticketHref}>
-                            <MessageSquareWarning
-                              className="h-5 w-5"
+                          <ActionBtn
+                            label="Copier le code"
+                            onClick={() => void copyParcelCode(row)}
+                          >
+                            <Copy className="h-4 w-4" strokeWidth={2.25} />
+                          </ActionBtn>
+                          {onEdit ? (
+                            <ActionBtn
+                              label="Modifier"
+                              disabled={!editable}
+                              onClick={() => onEdit(row)}
+                            >
+                              <Pencil className="h-4 w-4" strokeWidth={2.25} />
+                            </ActionBtn>
+                          ) : null}
+                          {showTicketAction && ticketHref ? (
+                            <ActionLink label={ticketLabel} href={ticketHref}>
+                              <MessageSquareWarning
+                                className="h-4 w-4"
+                                strokeWidth={2.25}
+                              />
+                            </ActionLink>
+                          ) : null}
+                          {cancellable ? (
+                            <ActionBtn
+                              label="Annuler le colis"
+                              onClick={() => onCancel(row)}
+                              danger
+                            >
+                              <Ban className="h-4 w-4" strokeWidth={2.25} />
+                            </ActionBtn>
+                          ) : null}
+                        </div>
+                        {href ? (
+                          <ActionLink label="Détail" href={href}>
+                            <ChevronRight
+                              className="h-4 w-4"
                               strokeWidth={2.25}
                             />
                           </ActionLink>
-                        ) : null}
-                        {cancellable ? (
-                          <ActionBtn
-                            label="Annuler le colis"
-                            onClick={() => onCancel(row)}
-                            danger
-                          >
-                            <Ban className="h-5 w-5" strokeWidth={2.25} />
-                          </ActionBtn>
-                        ) : null}
-                        {href ? (
-                          <Link
-                            href={href}
-                            className="ms-auto inline-flex h-11 items-center gap-1 rounded-xl bg-ops-accent px-3.5 text-[13px] font-semibold text-white transition hover:brightness-110"
-                          >
-                            Détail
-                            <ChevronRight className="h-4 w-4" aria-hidden />
-                          </Link>
                         ) : null}
                       </div>
                     </div>
@@ -1110,7 +1096,7 @@ function ActionBtn({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border bg-ops-page px-3 transition disabled:cursor-not-allowed disabled:opacity-35",
+        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-ops-page transition disabled:cursor-not-allowed disabled:opacity-35",
         danger
           ? "border-ops-accent/30 text-ops-accent hover:border-ops-accent/50 hover:bg-ops-accent/10"
           : "border-ops-card text-ops-ink/70 hover:border-ops-ink/20 hover:text-ops-ink",
@@ -1131,25 +1117,17 @@ function ActionLink({
   children: ReactNode;
 }) {
   const external = href.startsWith("tel:");
+  const className =
+    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ops-card bg-ops-page text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-accent";
   if (external) {
     return (
-      <a
-        href={href}
-        title={label}
-        aria-label={label}
-        className="inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-3 text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-accent"
-      >
+      <a href={href} title={label} aria-label={label} className={className}>
         {children}
       </a>
     );
   }
   return (
-    <Link
-      href={href}
-      title={label}
-      aria-label={label}
-      className="inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl border border-ops-card bg-ops-page px-3 text-ops-ink/70 transition hover:border-ops-ink/20 hover:text-ops-ink"
-    >
+    <Link href={href} title={label} aria-label={label} className={className}>
       {children}
     </Link>
   );
