@@ -8,6 +8,7 @@ import { OpsDashboardLoader } from "@/components/OpsDashboardLoader";
 import { EmptyState, ErrorBanner } from "@/components/ui";
 import { apiFetch, type StatusCard } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useLiveReload } from "@/lib/data-refresh";
 import {
   PARCEL_CREATED_EVENT,
   useOptionalPortalCreateParcel,
@@ -131,48 +132,58 @@ export function AdminNavexDashboard({
   const token = session?.accessToken;
   const isExpediteurHome = home.asideMode === "expediteur";
 
-  const loadDashboard = useCallback(() => {
-    if (!token) return;
-    setLoading(true);
-    Promise.all([
-      apiFetch<StatusCard[]>("/dashboard/status-counts", { token }),
-      apiFetch<AnalyticsPayload>("/dashboard/analytics", { token }).catch(
-        () => emptyAnalytics(),
-      ),
-      apiFetch<RecentParcel[]>("/parcels", { token }),
-      apiFetch<StatusCategory[]>("/status-categories", { token }).catch(
-        () => [] as StatusCategory[],
-      ),
-      isExpediteurHome
-        ? apiFetch<Payment[]>("/payments", { token }).catch(() => [] as Payment[])
-        : Promise.resolve([] as Payment[]),
-      isExpediteurHome
-        ? apiFetch<Ticket[]>("/tickets", { token }).catch(() => [] as Ticket[])
-        : Promise.resolve([] as Ticket[]),
-    ])
-      .then(([counts, stats, list, cats, paymentList, ticketList]) => {
-        setStatusCards(counts);
-        setAnalytics(stats ?? emptyAnalytics());
-        setParcels(list);
-        setCategories(
-          cats.filter((c) => isStatusCategoryIcon(String(c.icon))),
-        );
-        setPayments(paymentList);
-        setTickets(ticketList);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [token, isExpediteurHome]);
+  const loadDashboard = useCallback(
+    (opts?: { silent?: boolean }) => {
+      if (!token) return;
+      if (!opts?.silent) setLoading(true);
+      Promise.all([
+        apiFetch<StatusCard[]>("/dashboard/status-counts", { token }),
+        apiFetch<AnalyticsPayload>("/dashboard/analytics", { token }).catch(
+          () => emptyAnalytics(),
+        ),
+        apiFetch<RecentParcel[]>("/parcels", { token }),
+        apiFetch<StatusCategory[]>("/status-categories", { token }).catch(
+          () => [] as StatusCategory[],
+        ),
+        isExpediteurHome
+          ? apiFetch<Payment[]>("/payments", { token }).catch(() => [] as Payment[])
+          : Promise.resolve([] as Payment[]),
+        isExpediteurHome
+          ? apiFetch<Ticket[]>("/tickets", { token }).catch(() => [] as Ticket[])
+          : Promise.resolve([] as Ticket[]),
+      ])
+        .then(([counts, stats, list, cats, paymentList, ticketList]) => {
+          setStatusCards(counts);
+          setAnalytics(stats ?? emptyAnalytics());
+          setParcels(list);
+          setCategories(
+            cats.filter((c) => isStatusCategoryIcon(String(c.icon))),
+          );
+          setPayments(paymentList);
+          setTickets(ticketList);
+          setError(null);
+        })
+        .catch((err: Error) => setError(err.message))
+        .finally(() => {
+          if (!opts?.silent) setLoading(false);
+        });
+    },
+    [token, isExpediteurHome],
+  );
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
   useEffect(() => {
-    const onCreated = () => loadDashboard();
+    const onCreated = () => loadDashboard({ silent: true });
     window.addEventListener(PARCEL_CREATED_EVENT, onCreated);
     return () => window.removeEventListener(PARCEL_CREATED_EVENT, onCreated);
   }, [loadDashboard]);
+
+  useLiveReload(() => loadDashboard({ silent: true }), {
+    enabled: Boolean(token),
+  });
 
   const recent = useMemo(() => parcels.slice(0, 12), [parcels]);
   const returns = useMemo(

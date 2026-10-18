@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Coins, MapPin, Phone, RefreshCw, Route } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useLiveReload } from "@/lib/data-refresh";
 import { useAuth } from "@/lib/auth-context";
 import { useStatusLabel } from "@/i18n/hooks";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
@@ -97,19 +98,23 @@ export function LivreurTour() {
   const [comment, setComment] = useState("");
   const [cancelParty, setCancelParty] = useState<CancelParty | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!session?.accessToken) return;
     const data = await apiFetch<TourParcel[]>("/parcels", {
       token: session.accessToken,
     });
     setParcels(data);
-  }
+  }, [session?.accessToken]);
 
   useEffect(() => {
     load()
       .catch((e: Error) => setMessage(e.message))
       .finally(() => setLoading(false));
-  }, [session]);
+  }, [load]);
+
+  useLiveReload(() => {
+    void load().catch((e: Error) => setMessage(e.message));
+  }, { enabled: Boolean(session?.accessToken) });
 
   const today = useMemo(() => new Date(), []);
 

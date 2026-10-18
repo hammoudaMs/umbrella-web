@@ -1,4 +1,5 @@
 import type { AppRole } from "@/lib/roles";
+import { notifyDataChanged } from "@/lib/data-refresh";
 import { USE_MOCK } from "@/lib/mock-mode";
 import { MockHttpError, mockHandle } from "@/lib/mock-db";
 
@@ -112,9 +113,12 @@ async function httpRequest<T>(
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...init,
+      cache: "no-store",
       headers: {
         ...(isForm ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
         ...init.headers,
       },
     });
@@ -148,12 +152,16 @@ export async function apiFetch<T>(
       : httpRequest<T>(path, { ...init, method }, accessToken);
 
   try {
-    return await send(token);
+    const result = await send(token);
+    if (method !== "GET" && method !== "HEAD") notifyDataChanged();
+    return result;
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401 || !token) throw error;
     const renewed = await refreshToken();
     if (!renewed) throw error;
-    return send(renewed);
+    const result = await send(renewed);
+    if (method !== "GET" && method !== "HEAD") notifyDataChanged();
+    return result;
   }
 }
 

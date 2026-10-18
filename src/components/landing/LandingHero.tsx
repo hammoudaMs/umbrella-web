@@ -107,8 +107,8 @@ export function LandingHero({
         />
       </div>
 
-      <header className="hero-chrome relative z-40 shrink-0">
-        <div className="mx-auto flex h-12 max-w-6xl items-center justify-between gap-3 px-5 sm:h-14 sm:px-6 md:h-16 md:px-10 lg:px-14">
+      <header className="hero-chrome relative z-40 shrink-0 pt-[max(0.625rem,env(safe-area-inset-top))]">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-5 sm:px-6 md:h-16 md:px-10 lg:px-14">
           <Link href="/" className="shrink-0" aria-label="Umbrella Express">
             <BrandLogo surface="dark" priority />
           </Link>
@@ -164,7 +164,7 @@ export function LandingHero({
               backgroundSize: "24px 24px",
             }}
           />
-          <div className="relative flex h-12 shrink-0 items-center justify-between px-5">
+          <div className="relative flex min-h-14 shrink-0 items-center justify-between px-5 pb-1 pt-[max(0.625rem,env(safe-area-inset-top))]">
             <Link
               href="/"
               className="shrink-0"

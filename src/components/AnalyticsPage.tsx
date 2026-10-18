@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -24,6 +24,7 @@ import {
   saveAnalyticsPrefs,
 } from "@/lib/analytics-prefs";
 import { useAuth } from "@/lib/auth-context";
+import { useLiveReload } from "@/lib/data-refresh";
 import { canSeeDeliveryMode } from "@/lib/roles";
 
 gsap.registerPlugin(useGSAP);
@@ -183,16 +184,32 @@ export function AnalyticsPage({
     saveAnalyticsPrefs(pageKey, prefs);
   }, [prefs, pageKey, prefsReady]);
 
+  const loadAnalytics = useCallback(
+    (opts?: { silent?: boolean }) => {
+      if (!session?.accessToken) return;
+      if (!opts?.silent) setLoading(true);
+      apiFetch<AnalyticsPayload>("/dashboard/analytics", {
+        token: session.accessToken,
+      })
+        .then((payload) => {
+          setAnalytics(payload);
+          setError(null);
+        })
+        .catch((err: Error) => setError(err.message))
+        .finally(() => {
+          if (!opts?.silent) setLoading(false);
+        });
+    },
+    [session?.accessToken],
+  );
+
   useEffect(() => {
-    if (!session?.accessToken) return;
-    setLoading(true);
-    apiFetch<AnalyticsPayload>("/dashboard/analytics", {
-      token: session.accessToken,
-    })
-      .then(setAnalytics)
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [session]);
+    loadAnalytics();
+  }, [loadAnalytics]);
+
+  useLiveReload(() => loadAnalytics({ silent: true }), {
+    enabled: Boolean(session?.accessToken),
+  });
 
   const weekTotal = useMemo(
     () => analytics?.last7Days.reduce((s, d) => s + d.total, 0) ?? 0,

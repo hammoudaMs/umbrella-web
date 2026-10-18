@@ -276,10 +276,12 @@ export function PaymentsManager({
   const canBatch =
     canModerate &&
     (role === "EXPERT_COMPTABLE" || role === "SUPER_ADMIN" || role === "ADMIN");
+  const senderMode = canCreate && !canModerate;
 
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow={senderMode ? t("payments.eyebrow") : undefined}
         title={t("payments.title")}
         description={
           canModerate ? t("payments.descModerate") : t("payments.descCreate")
@@ -307,46 +309,97 @@ export function PaymentsManager({
         </Panel>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {canCreate ? (
+      {senderMode ? (
+        <section className="overflow-hidden rounded-2xl border border-ops-card bg-ops-surface shadow-ops">
+          <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                label: t("payments.available"),
+                value: formatTnd(totals.eligible),
+                hint: t("payments.eligibleHint", { count: eligible.length }),
+                accent: "text-emerald-700 dark:text-emerald-300",
+              },
+              {
+                label: t("payments.inDemand"),
+                value: formatTnd(totals.enDemande),
+                hint: t("payments.statusEnDemande"),
+                accent: "text-ops-ink",
+              },
+              {
+                label: t("payments.inValidation"),
+                value: formatTnd(totals.enCours),
+                hint: t("payments.statusValideFinance"),
+                accent: "text-ops-ink",
+              },
+              {
+                label: t("payments.disbursed"),
+                value: formatTnd(totals.paye),
+                hint: t("payments.statusPaye"),
+                accent: "text-ops-ink",
+              },
+            ].map((card) => (
+              <div
+                key={card.label}
+                className="border-b border-ops-card px-5 py-4 last:border-b-0 sm:odd:border-e lg:border-b-0 lg:border-e lg:last:border-e-0"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ops-ink/45">
+                  {card.label}
+                </p>
+                <p
+                  className={`mt-1.5 font-display text-2xl font-extrabold tabular-nums ${card.accent}`}
+                >
+                  {card.value}
+                </p>
+                <p className="mt-1 text-xs text-ops-ink/45">{card.hint}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {canCreate ? (
+            <StatCard
+              label={t("payments.available")}
+              value={formatTnd(totals.eligible)}
+              hint={t("payments.eligibleHint", { count: eligible.length })}
+              icon={HandCoins}
+              tone="success"
+            />
+          ) : null}
           <StatCard
-            label={t("payments.available")}
-            value={formatTnd(totals.eligible)}
-            hint={t("payments.eligibleHint", { count: eligible.length })}
-            icon={HandCoins}
-            tone="success"
+            label={t("payments.inDemand")}
+            value={formatTnd(totals.enDemande)}
+            icon={Clock3}
+            tone="gold"
           />
-        ) : null}
-        <StatCard
-          label={t("payments.inDemand")}
-          value={formatTnd(totals.enDemande)}
-          icon={Clock3}
-          tone="gold"
-        />
-        <StatCard
-          label={t("payments.inValidation")}
-          value={formatTnd(totals.enCours)}
-          icon={Wallet}
-          tone="brand"
-        />
-        <StatCard
-          label={t("payments.disbursed")}
-          value={formatTnd(totals.paye)}
-          icon={Banknote}
-        />
-      </div>
+          <StatCard
+            label={t("payments.inValidation")}
+            value={formatTnd(totals.enCours)}
+            icon={Wallet}
+            tone="brand"
+          />
+          <StatCard
+            label={t("payments.disbursed")}
+            value={formatTnd(totals.paye)}
+            icon={Banknote}
+          />
+        </div>
+      )}
 
       {canCreate ? (
-        <Panel className="space-y-4">
+        <Panel className="space-y-4 border-ops-accent/20 bg-gradient-to-b from-ops-accent/[0.04] to-ops-surface">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ops-accent/80">
+                {t("payments.eyebrow")}
+              </p>
               <h2 className="font-display text-lg font-bold text-ops-ink">
                 {t("payments.newRequest")}
               </h2>
               <p className="text-sm text-ops-ink/50">{t("payments.newRequestHint")}</p>
             </div>
             {eligible.length > 0 ? (
-              <label className="inline-flex items-center gap-2 text-sm font-medium text-ops-ink">
+              <label className="inline-flex items-center gap-2 rounded-full border border-ops-card bg-ops-surface px-3 py-1.5 text-sm font-medium text-ops-ink">
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-ops-accent"
@@ -365,19 +418,22 @@ export function PaymentsManager({
               </p>
             ) : (
               <EmptyState
+                icon={HandCoins}
                 title={t("payments.noEligible")}
                 description={t("payments.noEligibleHint")}
               />
             )
           ) : (
-            <ul className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
+            <ul className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
               {eligible.map((p) => {
                 const checked = selected.includes(p.id);
                 return (
                   <li key={p.id}>
                     <label
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition ${
-                        checked ? "border-ops-accent bg-ops-accent/10" : "border-ops-card hover:border-ops-accent/40"
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition ${
+                        checked
+                          ? "border-ops-accent bg-ops-accent/10 shadow-sm"
+                          : "border-ops-card bg-ops-surface hover:border-ops-accent/40"
                       }`}
                     >
                       <input
@@ -395,7 +451,7 @@ export function PaymentsManager({
                         </span>
                       </span>
                       <span className="text-right">
-                        <span className="block font-semibold text-ops-ink">
+                        <span className="block font-semibold tabular-nums text-ops-ink">
                           {formatTnd(parcelNet(p))}
                         </span>
                         {toAmount(p.deliveryFee ?? 0) > 0 ? (
@@ -411,10 +467,12 @@ export function PaymentsManager({
             </ul>
           )}
 
-          <div className="flex flex-col gap-3 border-t border-ops-card pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-t border-ops-card/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ops-ink/50">
-              {selected.length} colis · net{" "}
-              <span className="font-bold text-ops-ink">{formatTnd(selectedTotal)}</span>
+              {t("payments.selectedSummary", {
+                count: selected.length,
+                amount: formatTnd(selectedTotal),
+              })}
             </p>
             <Button
               icon={HandCoins}

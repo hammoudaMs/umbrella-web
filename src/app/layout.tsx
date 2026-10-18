@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Noto_Sans_Arabic, Source_Sans_3 } from "next/font/google";
+import { ClientCacheGuard } from "@/components/ClientCacheGuard";
 import { FeedbackProvider } from "@/components/Feedback";
 import { AuthProvider } from "@/lib/auth-context";
 import { CallProvider } from "@/lib/call-context";
@@ -29,6 +30,12 @@ const arabic = Noto_Sans_Arabic({
 export const metadata: Metadata = {
   title: "Umbrella Express",
   description: "Delivery operations platform",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 const bootScript = `
@@ -73,6 +80,7 @@ export default function RootLayout({
       <body
         className={`${sans.variable} ${display.variable} ${arabic.variable} font-sans antialiased`}
       >
+        <ClientCacheGuard />
         <ThemeProvider>
           <LocaleProvider>
             <AuthProvider>

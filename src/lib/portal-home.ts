@@ -610,14 +610,14 @@ export function portalHomeFor(
         {
           href: `${b}/finances`,
           label: t("nav.finances"),
-          hint: t("home.balancesTransfers"),
+          hint: t("home.businessStock"),
           tone: "bg-amber-700",
           icon: Wallet,
         },
         {
           href: `${b}/payments`,
           label: t("home.payments"),
-          hint: t("home.balancesTransfers"),
+          hint: t("home.platformPayouts"),
           tone: "bg-emerald-600",
           icon: CreditCard,
         },

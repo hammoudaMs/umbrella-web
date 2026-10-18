@@ -40,6 +40,16 @@ function needsAuth(pathname: string): boolean {
   );
 }
 
+/** Keep portal HTML/RSC fresh — avoid sticky browser/CDN document caches. */
+function withNoStore(res: NextResponse): NextResponse {
+  res.headers.set(
+    "Cache-Control",
+    "private, no-cache, no-store, must-revalidate",
+  );
+  res.headers.set("Pragma", "no-cache");
+  return res;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host");
@@ -78,7 +88,7 @@ export function middleware(request: NextRequest) {
           path: "/",
           sameSite: "lax",
         });
-        return res;
+        return withNoStore(res);
       }
     }
 
@@ -88,7 +98,7 @@ export function middleware(request: NextRequest) {
       path: "/",
       sameSite: "lax",
     });
-    return res;
+    return withNoStore(res);
   }
 
   // Path mode (default): protect portal prefixes, stamp tenant cookie for login binding
@@ -106,7 +116,7 @@ export function middleware(request: NextRequest) {
           path: "/",
           sameSite: "lax",
         });
-        return res;
+        return withNoStore(res);
       }
     }
     const res = NextResponse.next();
@@ -115,7 +125,7 @@ export function middleware(request: NextRequest) {
       path: "/",
       sameSite: "lax",
     });
-    return res;
+    return withNoStore(res);
   }
 
   // Clear stale tenant cookie on hub hosts
@@ -123,10 +133,10 @@ export function middleware(request: NextRequest) {
   if (!sub && !pathTenant) {
     const res = NextResponse.next();
     res.cookies.delete("umbrella_tenant");
-    return res;
+    return withNoStore(res);
   }
 
-  return NextResponse.next();
+  return withNoStore(NextResponse.next());
 }
 
 export const config = {

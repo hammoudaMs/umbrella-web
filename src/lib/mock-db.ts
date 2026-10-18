@@ -268,6 +268,21 @@ export const EVENT_LABEL: Record<string, string> = {
 
 let cache: MockDb | null = null;
 
+function invalidateMockCacheFromPeer() {
+  cache = null;
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(MOCK_RESET_EVENT));
+  void import("@/lib/data-refresh").then(({ notifyDataChanged }) => {
+    notifyDataChanged();
+  });
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === STORAGE_KEY) invalidateMockCacheFromPeer();
+  });
+}
+
 function seedStatusCategories(): StatusCategory[] {
   return DEFAULT_STATUS_CATEGORIES.map((row, index) => ({
     id: index + 1,
