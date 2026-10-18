@@ -120,11 +120,11 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div
         role="tablist"
         aria-label="Filtrer par statut"
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 lg:gap-2"
       >
         <FilterChip
           label="Tous"
@@ -196,7 +196,7 @@ function FilterChip({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition",
+        "flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
         active
           ? "border-transparent text-ops-ink"
@@ -213,21 +213,21 @@ function FilterChip({
       }
     >
       <span
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
         style={{
           backgroundColor: hexToRgba(color, active ? 0.28 : 0.14),
           color,
         }}
         aria-hidden
       >
-        <Icon className="h-3.5 w-3.5" strokeWidth={2.25} />
+        <Icon className="h-3 w-3" strokeWidth={2.25} />
       </span>
-      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-tight tracking-tight">
+      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-tight tracking-tight">
         {label}
       </span>
       <span
         className={cn(
-          "shrink-0 font-display text-[14px] font-bold tabular-nums leading-none",
+          "shrink-0 font-display text-[13px] font-bold tabular-nums leading-none",
           active ? "text-ops-ink" : "text-ops-ink/40",
         )}
       >
