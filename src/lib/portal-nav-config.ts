@@ -19,7 +19,6 @@ import {
   Ticket,
   Truck,
   Users,
-  Wallet,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
