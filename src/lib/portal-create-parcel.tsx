@@ -4,10 +4,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
+import { consumeCreateParcelReopen } from "@/lib/create-parcel-draft";
 
 type PortalCreateParcelContextValue = {
   createOpen: boolean;
@@ -23,8 +26,15 @@ export function PortalCreateParcelProvider({
 }: {
   children: ReactNode;
 }) {
+  const pathname = usePathname();
   const [createOpen, setCreateOpen] = useState(false);
   const openCreateParcel = useCallback(() => setCreateOpen(true), []);
+
+  useEffect(() => {
+    if (pathname.endsWith("/settings")) return;
+    if (!consumeCreateParcelReopen()) return;
+    setCreateOpen(true);
+  }, [pathname]);
 
   const value = useMemo(
     () => ({ createOpen, openCreateParcel, setCreateOpen }),

@@ -57,6 +57,13 @@ import {
 } from "@/lib/sender-finance";
 import { openBordereauPdf } from "@/lib/parcel-report";
 import {
+  clearCreateParcelDraft,
+  loadCreateParcelDraft,
+  markCreateParcelReopen,
+  saveCreateParcelDraft,
+  type CreateParcelDraft,
+} from "@/lib/create-parcel-draft";
+import {
   buildCustomInputsFromValues,
   normalizeInputDefs,
   validateRequiredInputs,
@@ -203,6 +210,7 @@ export function CreateParcelWizard({
     useState(false);
   const [color, setColor] = useState("");
   const [size, setSize] = useState("");
+  const [articleName, setArticleName] = useState("");
   const [productType, setProductType] = useState("");
   const [productTypeOther, setProductTypeOther] = useState("");
   const [includeArticle, setIncludeArticle] = useState(false);
@@ -233,10 +241,96 @@ export function CreateParcelWizard({
   );
   const [lookingUpRecipient, setLookingUpRecipient] = useState(false);
   const lastLookupPhoneRef = useRef<string | null>(null);
+  const draftRestoredRef = useRef(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const userId = session?.user.id;
 
   const addressQuality = useMemo(() => scoreAddress(location), [location]);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
+
+  function snapshotDraft(): CreateParcelDraft {
+    return {
+      stepIndex,
+      recipientName,
+      phone,
+      phone2,
+      exchange,
+      allowTry,
+      isFragile,
+      liabilityAccepted,
+      contentDeclarationAccepted,
+      color,
+      size,
+      articleName,
+      productType,
+      productTypeOther,
+      includeArticle,
+      customInputValues,
+      location,
+      deliveryMode,
+      deliveryWindow,
+      landmarkName,
+      forceWeakAddress,
+      zoneName,
+      price,
+      unitSalePrice,
+      deliveryFee,
+      returnFee,
+      articleCount,
+      parcelCount,
+      paymentMode,
+      exchangeNotes,
+      notes,
+      parcelAdvancedOpen,
+      recipientLookupHint,
+      lookedUpPhone: lastLookupPhoneRef.current,
+    };
+  }
+
+  function applyDraft(draft: CreateParcelDraft) {
+    setStepIndex(
+      Math.min(Math.max(0, draft.stepIndex), STEPS.length - 1),
+    );
+    setRecipientName(draft.recipientName ?? "");
+    setPhone(draft.phone ?? "");
+    setPhone2(draft.phone2 ?? "");
+    setExchange(Boolean(draft.exchange));
+    setAllowTry(Boolean(draft.allowTry));
+    setIsFragile(Boolean(draft.isFragile));
+    setLiabilityAccepted(Boolean(draft.liabilityAccepted));
+    setContentDeclarationAccepted(Boolean(draft.contentDeclarationAccepted));
+    setColor(draft.color ?? "");
+    setSize(draft.size ?? "");
+    setArticleName(draft.articleName ?? "");
+    setProductType(draft.productType ?? "");
+    setProductTypeOther(draft.productTypeOther ?? "");
+    setIncludeArticle(Boolean(draft.includeArticle));
+    setCustomInputValues(draft.customInputValues ?? {});
+    setLocation(draft.location ?? EMPTY_ADDRESS);
+    setDeliveryMode(draft.deliveryMode ?? "EXTERNAL");
+    setDeliveryWindow(draft.deliveryWindow ?? "journee");
+    setLandmarkName(draft.landmarkName ?? null);
+    setLandmarkPreview(null);
+    setForceWeakAddress(Boolean(draft.forceWeakAddress));
+    setZoneName(draft.zoneName ?? null);
+    setPrice(draft.price ?? "");
+    setUnitSalePrice(draft.unitSalePrice ?? "");
+    setDeliveryFee(draft.deliveryFee ?? String(DEFAULT_DELIVERY_FEE));
+    setReturnFee(draft.returnFee ?? String(DEFAULT_RETURN_FEE));
+    setArticleCount(draft.articleCount ?? "1");
+    setParcelCount(draft.parcelCount ?? "1");
+    setPaymentMode(draft.paymentMode ?? "espece");
+    setExchangeNotes(draft.exchangeNotes ?? "");
+    setNotes(draft.notes ?? "");
+    setParcelAdvancedOpen(draft.parcelAdvancedOpen ?? true);
+    setCreatedParcel(null);
+    setRecipientLookupHint(draft.recipientLookupHint ?? null);
+    setLookingUpRecipient(false);
+    const phoneKey = (draft.lookedUpPhone ?? draft.phone ?? "").trim();
+    lastLookupPhoneRef.current =
+      phoneKey.length === 8 ? phoneKey : null;
+  }
 
   function resetForm() {
     setStepIndex(0);
@@ -250,6 +344,7 @@ export function CreateParcelWizard({
     setContentDeclarationAccepted(false);
     setColor("");
     setSize("");
+    setArticleName("");
     setProductType("");
     setProductTypeOther("");
     setIncludeArticle(false);
@@ -262,6 +357,9 @@ export function CreateParcelWizard({
     setForceWeakAddress(false);
     setZoneName(null);
     setPrice("");
+    setUnitSalePrice("");
+    setDeliveryFee(String(DEFAULT_DELIVERY_FEE));
+    setReturnFee(String(DEFAULT_RETURN_FEE));
     setArticleCount("1");
     setParcelCount("1");
     setPaymentMode("espece");
@@ -275,11 +373,67 @@ export function CreateParcelWizard({
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      draftRestoredRef.current = false;
+      setDraftReady(false);
+      return;
+    }
     setSavedAddresses(loadAddressBook());
-    setStepIndex(0);
-    setCreatedParcel(null);
-  }, [open]);
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const draft = loadCreateParcelDraft(userId);
+    if (draft) {
+      applyDraft(draft);
+    } else {
+      setCreatedParcel(null);
+    }
+    setDraftReady(true);
+  }, [open, userId]);
+
+  useEffect(() => {
+    if (!open || !userId || !draftReady || createdParcel) return;
+    const timer = window.setTimeout(() => {
+      saveCreateParcelDraft(userId, snapshotDraft());
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    open,
+    userId,
+    draftReady,
+    createdParcel,
+    stepIndex,
+    recipientName,
+    phone,
+    phone2,
+    exchange,
+    allowTry,
+    isFragile,
+    liabilityAccepted,
+    contentDeclarationAccepted,
+    color,
+    size,
+    articleName,
+    productType,
+    productTypeOther,
+    includeArticle,
+    customInputValues,
+    location,
+    deliveryMode,
+    deliveryWindow,
+    landmarkName,
+    forceWeakAddress,
+    zoneName,
+    price,
+    unitSalePrice,
+    deliveryFee,
+    returnFee,
+    articleCount,
+    parcelCount,
+    paymentMode,
+    exchangeNotes,
+    notes,
+    parcelAdvancedOpen,
+  ]);
 
   useEffect(() => {
     if (!open || phone.length !== 8 || !session?.accessToken) {
@@ -390,17 +544,26 @@ export function CreateParcelWizard({
   }, [location.governorate, deliveryRoutes]);
 
   function handleClose() {
-    onClose();
+    clearCreateParcelDraft(userId);
     resetForm();
+    onClose();
   }
 
   function startAnother() {
+    clearCreateParcelDraft(userId);
     resetForm();
   }
 
   function goHome() {
     handleClose();
     if (role) router.push(PORTAL_BY_ROLE[role]);
+  }
+
+  function goToSettings() {
+    if (userId) saveCreateParcelDraft(userId, snapshotDraft());
+    markCreateParcelReopen();
+    onClose();
+    if (role) router.push(`${PORTAL_BY_ROLE[role]}/settings`);
   }
 
   function printCreatedBordereau(parcel: Parcel) {
@@ -492,16 +655,6 @@ export function CreateParcelWizard({
       return true;
     }
     if (id === "parcel") {
-      if (includeArticle) {
-        if (!productType) {
-          toast.error("Choisissez le type de produit");
-          return false;
-        }
-        if (productType === "Autre" && productTypeOther.trim().length < 2) {
-          toast.error("Précisez le type de produit");
-          return false;
-        }
-      }
       const priceNum = Number(price);
       if (!Number.isFinite(priceNum) || priceNum < 0) {
         toast.error("Prix invalide");
@@ -566,11 +719,19 @@ export function CreateParcelWizard({
       return;
     }
 
-    const designation = includeArticle
-      ? productType === "Autre"
-        ? productTypeOther.trim()
-        : productType
-      : undefined;
+    const designation =
+      [
+        articleName.trim(),
+        includeArticle
+          ? productType === "Autre"
+            ? productTypeOther.trim()
+            : productType.trim()
+          : "",
+        includeArticle && color.trim() ? `coul. ${color.trim()}` : "",
+        includeArticle && size.trim() ? `taille ${size.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ") || undefined;
     const customInputs = buildCustomInputsFromValues(
       parcelInputDefs,
       customInputValues,
@@ -589,8 +750,8 @@ export function CreateParcelWizard({
       const saleNum = unitSalePrice.trim()
         ? Number(unitSalePrice)
         : Number(price);
-      const deliveryFeeNum = Number(deliveryFee || DEFAULT_DELIVERY_FEE);
-      const returnFeeNum = Number(returnFee || DEFAULT_RETURN_FEE);
+      const deliveryFeeNum = DEFAULT_DELIVERY_FEE;
+      const returnFeeNum = DEFAULT_RETURN_FEE;
       const created = await request<Parcel>("/parcels", "POST", {
         recipientName: recipientName.trim(),
         phone: phone.trim(),
@@ -656,6 +817,7 @@ export function CreateParcelWizard({
         }
       }
 
+      clearCreateParcelDraft(userId);
       setCreatedParcel(created);
       onCreated?.();
     } catch (err) {
@@ -1156,68 +1318,45 @@ export function CreateParcelWizard({
               </div>
             </div>
 
+            <div>
+              <FieldLabel htmlFor="articleName">
+                Nom produit (optionnel)
+              </FieldLabel>
+              <input
+                id="articleName"
+                name="articleName"
+                className={fieldClass}
+                value={articleName}
+                onChange={(e) => setArticleName(e.target.value)}
+                placeholder="Ex. Robe été, chargeur USB…"
+                maxLength={120}
+              />
+            </div>
+
             {isSender ? (
               <div className="space-y-3 rounded-xl border border-ops-card bg-ops-page/40 p-3.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ops-ink/45">
-                  Marge & frais
+                  Marge
                 </p>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <FieldLabel htmlFor="unitSalePrice">
-                      Prix de vente / unité
-                    </FieldLabel>
-                    <div className="relative">
-                      <input
-                        id="unitSalePrice"
-                        type="number"
-                        step="0.001"
-                        min={0}
-                        inputMode="decimal"
-                        className={cn(fieldClass, "pr-12")}
-                        value={unitSalePrice}
-                        onChange={(e) => setUnitSalePrice(e.target.value)}
-                        placeholder={price || "0"}
-                      />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
-                        DT
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="deliveryFee">Frais livraison</FieldLabel>
-                    <div className="relative">
-                      <input
-                        id="deliveryFee"
-                        type="number"
-                        step="0.001"
-                        min={0}
-                        inputMode="decimal"
-                        className={cn(fieldClass, "pr-12")}
-                        value={deliveryFee}
-                        onChange={(e) => setDeliveryFee(e.target.value)}
-                      />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
-                        DT
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="returnFee">Frais retour</FieldLabel>
-                    <div className="relative">
-                      <input
-                        id="returnFee"
-                        type="number"
-                        step="0.001"
-                        min={0}
-                        inputMode="decimal"
-                        className={cn(fieldClass, "pr-12")}
-                        value={returnFee}
-                        onChange={(e) => setReturnFee(e.target.value)}
-                      />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
-                        DT
-                      </span>
-                    </div>
+                <div>
+                  <FieldLabel htmlFor="unitSalePrice">
+                    Prix de vente / unité
+                  </FieldLabel>
+                  <div className="relative">
+                    <input
+                      id="unitSalePrice"
+                      type="number"
+                      step="0.001"
+                      min={0}
+                      inputMode="decimal"
+                      className={cn(fieldClass, "pr-12")}
+                      value={unitSalePrice}
+                      onChange={(e) => setUnitSalePrice(e.target.value)}
+                      placeholder={price || "0"}
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
+                      DT
+                    </span>
                   </div>
                 </div>
                 {(() => {
@@ -1268,17 +1407,18 @@ export function CreateParcelWizard({
                   if (!e.target.checked) {
                     setProductType("");
                     setProductTypeOther("");
+                    setColor("");
+                    setSize("");
                   }
                 }}
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[#991211]"
               />
               <span>
                 <span className="block text-sm font-semibold text-ops-ink">
-                  Ajouter un article (optionnel)
+                  Détails article (optionnel)
                 </span>
                 <span className="mt-0.5 block text-[12px] text-ops-ink/45">
-                  Type, couleur, taille — sinon le colis est créé sans
-                  désignation.
+                  Type, couleur, taille — tous facultatifs.
                 </span>
               </span>
             </label>
@@ -1297,7 +1437,7 @@ export function CreateParcelWizard({
                       if (e.target.value !== "Autre") setProductTypeOther("");
                     }}
                   >
-                    <option value="">Sélectionnez un type</option>
+                    <option value="">Aucun (optionnel)</option>
                     {typeOptions.map((type) => (
                       <option key={type} value={type}>
                         {type}
@@ -1313,7 +1453,6 @@ export function CreateParcelWizard({
                     <input
                       id="productTypeOther"
                       name="productTypeOther"
-                      minLength={2}
                       className={fieldClass}
                       value={productTypeOther}
                       onChange={(e) => setProductTypeOther(e.target.value)}
@@ -1383,7 +1522,13 @@ export function CreateParcelWizard({
             ) : isSender ? (
               <p className="text-[12px] text-ops-ink/40">
                 Besoin d’autres champs (réf., marque…) ? Ajoutez-les dans{" "}
-                <span className="font-semibold text-ops-ink/55">Paramètres</span>
+                <button
+                  type="button"
+                  onClick={goToSettings}
+                  className="font-semibold text-ops-accent underline-offset-2 transition hover:underline"
+                >
+                  Paramètres
+                </button>
                 .
               </p>
             ) : null}
@@ -1395,7 +1540,7 @@ export function CreateParcelWizard({
                   onClick={() => setParcelAdvancedOpen((v) => !v)}
                   className="flex w-full items-center justify-between rounded-xl border border-ops-card bg-ops-page/50 px-3.5 py-3 text-left text-sm font-semibold text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-ink"
                 >
-                  Options (quantité, essai, fragile…)
+                  Plus de détails (quantité, essai, fragile…)
                   <ChevronDown
                     className={cn(
                       "h-4 w-4 shrink-0 transition",
@@ -1677,9 +1822,14 @@ export function CreateParcelWizard({
               <ReviewCard title="Colis">
                 <p className="font-semibold text-ops-ink">
                   {includeArticle
-                    ? productType === "Autre"
-                      ? productTypeOther || "—"
-                      : productType || "—"
+                    ? [
+                        articleName.trim(),
+                        productType === "Autre"
+                          ? productTypeOther.trim()
+                          : productType.trim(),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Article (détails vides)"
                     : "Sans article précisé"}
                 </p>
                 <p className="text-ops-ink/60">
