@@ -16,7 +16,12 @@ import {
   type LucideProps,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { DASHBOARD_STATUS_KEYS } from "@/lib/dashboard-statuses";
+import {
+  countByParcelStatus,
+  countForStatusKey,
+  DASHBOARD_STATUS_KEYS,
+  STATUS_ALIAS_KEYS,
+} from "@/lib/dashboard-statuses";
 import { REASON_VISIBLE_STATUSES } from "@/lib/parcel-transitions";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
@@ -81,23 +86,30 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
   const searchParams = useSearchParams();
   const current = searchParams.get("status");
 
-  const counts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const parcel of parcels) {
-      map.set(parcel.status, (map.get(parcel.status) ?? 0) + 1);
-    }
-    return map;
-  }, [parcels]);
+  const counts = useMemo(() => countByParcelStatus(parcels), [parcels]);
 
   const keys = useMemo(() => {
     const withCount = DASHBOARD_STATUS_KEYS.filter(
-      (key) => (counts.get(key) ?? 0) > 0 || current === key,
+      (key) => countForStatusKey(key, counts) > 0 || current === key,
     );
-    if (current && !withCount.includes(current as StatusKey)) {
-      return [...withCount, current as StatusKey];
+    const extras = Array.from(counts.keys()).filter(
+      (key) =>
+        key !== "SUPPRIME" &&
+        !DASHBOARD_STATUS_KEYS.includes(key as StatusKey) &&
+        !STATUS_ALIAS_KEYS.has(key as StatusKey) &&
+        ((counts.get(key) ?? 0) > 0 || current === key),
+    ) as StatusKey[];
+    const merged = [...withCount, ...extras];
+    if (current && !merged.includes(current as StatusKey)) {
+      return [...merged, current as StatusKey];
     }
-    return withCount;
+    return merged;
   }, [counts, current]);
+
+  const totalCount = useMemo(
+    () => parcels.filter((p) => p.status !== "SUPPRIME").length,
+    [parcels],
+  );
 
   function go(status: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -116,7 +128,7 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
       >
         <FilterChip
           label="Tous"
-          count={parcels.length}
+          count={totalCount}
           active={!current}
           color="#991211"
           onClick={() => go(null)}
@@ -130,7 +142,7 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
               key={key}
               label={SHORT_LABEL[key] ?? meta?.label ?? key}
               title={meta?.label ?? key}
-              count={counts.get(key) ?? 0}
+              count={countForStatusKey(key, counts)}
               active={current === key}
               color={meta?.color ?? "#64748b"}
               onClick={() => go(key)}

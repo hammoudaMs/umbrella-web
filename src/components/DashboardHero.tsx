@@ -100,29 +100,29 @@ export function DashboardHero({
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute inset-0 bg-gradient-to-br from-ops-page via-ops-surface to-[#2a1518]" />
           <HeroVanScene variant="portal" />
-          <div className="absolute inset-0 bg-gradient-to-r from-ops-page from-[0%] via-ops-page/88 via-[32%] to-transparent to-[58%]" />
-          <div className="absolute inset-y-0 left-0 w-[min(100%,22rem)] bg-gradient-to-r from-ops-page/90 via-ops-page/55 to-transparent sm:w-[28rem]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-ops-page from-[0%] via-ops-page/92 via-[36%] to-transparent to-[62%]" />
+          <div className="absolute inset-y-0 left-0 w-[min(100%,24rem)] bg-gradient-to-r from-ops-page via-ops-page/70 to-transparent sm:w-[28rem]" />
         </div>
 
         <div className="relative z-10 flex min-h-[200px] flex-col justify-between gap-5 px-5 py-6 sm:min-h-[220px] sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8 lg:py-7">
           <div className="relative z-10 flex min-w-0 max-w-[18rem] flex-col sm:max-w-md lg:max-w-lg">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ops-ink/50">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ops-ink/70 drop-shadow-[0_1px_8px_rgba(0,0,0,0.7)]">
               Umbrella Express
             </p>
-            <h1 className="mt-2 font-display text-[1.75rem] font-extrabold leading-[1.15] tracking-tight text-ops-ink drop-shadow-[0_2px_12px_rgba(0,0,0,0.65)] sm:text-3xl lg:text-4xl">
+            <h1 className="mt-2 font-display text-[1.75rem] font-extrabold leading-[1.15] tracking-tight text-ops-ink drop-shadow-[0_2px_16px_rgba(0,0,0,0.85)] sm:text-3xl lg:text-4xl">
               {heading}
             </h1>
-            <p className="mt-2 max-w-sm text-[13px] leading-snug text-ops-ink/75 sm:text-[15px] sm:leading-relaxed">
+            <p className="mt-2 max-w-sm text-[13px] font-medium leading-snug text-ops-ink drop-shadow-[0_1px_10px_rgba(0,0,0,0.75)] sm:text-[15px] sm:leading-relaxed">
               {subtitle}
             </p>
 
             {solde != null ? (
-              <div className="mt-4 inline-flex w-fit items-center gap-2.5 rounded-full border border-emerald-500/35 bg-black/45 px-3.5 py-2 shadow-[0_4px_16px_rgba(0,0,0,0.35)] backdrop-blur-md">
+              <div className="mt-4 inline-flex w-fit items-center gap-2.5 rounded-full border border-emerald-500/35 bg-black/55 px-3.5 py-2 shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
                 <Coins
                   className="h-4 w-4 shrink-0 text-emerald-400"
                   aria-hidden
                 />
-                <span className="text-[12px] font-semibold uppercase tracking-wide text-emerald-300/90">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-emerald-300">
                   Solde
                 </span>
                 <span className="font-display text-[15px] font-extrabold tabular-nums text-white">
@@ -132,16 +132,16 @@ export function DashboardHero({
             ) : null}
 
             {showMeta ? (
-              <p className="mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] capitalize text-ops-ink/55">
+              <p className="mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] font-medium capitalize text-ops-ink/80 drop-shadow-[0_1px_8px_rgba(0,0,0,0.7)]">
                 <span className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                  <CalendarDays className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
                   {formatGreetingDate(now)}
                 </span>
-                <span className="text-ops-ink/25" aria-hidden>
+                <span className="text-ops-ink/35" aria-hidden>
                   ·
                 </span>
                 <span className="inline-flex items-center gap-1.5 normal-case">
-                  <Clock3 className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                  <Clock3 className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
                   {formatGreetingTime(now)}
                 </span>
               </p>

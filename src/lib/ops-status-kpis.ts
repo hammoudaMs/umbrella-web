@@ -1,3 +1,4 @@
+import { countForStatusKey } from "@/lib/dashboard-statuses";
 import {
   DEFAULT_STATUS_CATEGORIES,
   TOTAL_CATEGORY_KEY,
@@ -93,42 +94,46 @@ export function buildOpsStatusKpis({
   hrefBase?: string;
 }): OpsKpi[] {
   const linkBase = hrefBase ?? `${basePath}/parcels`;
-  const get = (key: string) => {
-    if (countsByStatus instanceof Map) return countsByStatus.get(key) ?? 0;
-    return countsByStatus[key] ?? 0;
-  };
+  const cats = categoryList(categories);
+  const byKey = new Map(cats.map((c) => [c.key, c]));
 
-  const filter = statusKeysFilter?.length
-    ? new Set(statusKeysFilter)
-    : null;
-  const active = categoryList(categories).filter(
-    (c) => c.key === TOTAL_CATEGORY_KEY || !filter || filter.has(c.key),
+  const statusKeys = statusKeysFilter?.length
+    ? statusKeysFilter.filter((key) => key !== TOTAL_CATEGORY_KEY)
+    : cats
+        .map((c) => c.key)
+        .filter((key) => key !== TOTAL_CATEGORY_KEY);
+
+  const keyedTotal = statusKeys.reduce(
+    (sum, key) => sum + countForStatusKey(key, countsByStatus),
+    0,
   );
-  const statusKeys = active
-    .map((c) => c.key)
-    .filter((key) => key !== TOTAL_CATEGORY_KEY);
-  const keyedTotal = statusKeys.reduce((sum, key) => sum + get(key), 0);
 
-  return active.map((cat) => {
-    const isTotal = cat.key === TOTAL_CATEGORY_KEY;
-    const label =
-      isTotal && totalLabel
-        ? totalLabel
-        : cat.label || STATUS_META[cat.key as StatusKey]?.label || cat.key;
+  const orderedKeys = [TOTAL_CATEGORY_KEY, ...statusKeys];
+
+  return orderedKeys.map((key) => {
+    const isTotal = key === TOTAL_CATEGORY_KEY;
+    const cat = byKey.get(key);
+    const meta = STATUS_META[key as StatusKey];
+    const label = isTotal
+      ? (totalLabel ?? cat?.label ?? "Total")
+      : cat?.label || meta?.label || key;
     const value = isTotal
       ? String(totalCount ?? keyedTotal)
-      : String(get(cat.key));
+      : String(countForStatusKey(key, countsByStatus));
     const href = isTotal
       ? linkBase
-      : `${linkBase}${linkBase.includes("?") ? "&" : "?"}status=${encodeURIComponent(cat.key)}`;
+      : `${linkBase}${linkBase.includes("?") ? "&" : "?"}status=${encodeURIComponent(key)}`;
+
+    const fallback = byKey.get(key) ??
+      DEFAULT_STATUS_CATEGORIES.find((c) => c.key === key);
 
     return {
       label,
       value,
       href,
-      icon: cat.icon,
-      tone: TONE_BY_KEY[cat.key] ?? "slate",
-      color: cat.color,
+      icon: cat?.icon ?? fallback?.icon ?? "package",
+      tone: TONE_BY_KEY[key] ?? "slate",
+      color: cat?.color ?? fallback?.color ?? meta?.color ?? "#64748B",
       accent: "",
       glow: "",
     };

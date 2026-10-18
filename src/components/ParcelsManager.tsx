@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import { apiFetch } from "@/lib/api";
 import type { Parcel, Zone } from "@/lib/domain";
 import { USE_MOCK } from "@/lib/mock-mode";
+import { statusKeysMatching } from "@/lib/dashboard-statuses";
 import {
   RETURN_STATUSES,
   STATUS_META,
@@ -111,7 +112,8 @@ export function ParcelsManager({
         RETURN_STATUSES.includes(p.status as StatusKey),
       );
     } else if (statusFilter) {
-      list = list.filter((p) => p.status === statusFilter);
+      const match = new Set(statusKeysMatching(statusFilter));
+      list = list.filter((p) => match.has(p.status));
     }
     if (codeQuery) {
       const q = codeQuery.toLowerCase();

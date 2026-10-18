@@ -6,13 +6,14 @@ import { useGSAP } from "@gsap/react";
 import { MobileOpsDashboard } from "@/components/MobileOpsDashboard";
 import { OpsDashboardLoader } from "@/components/OpsDashboardLoader";
 import { EmptyState, ErrorBanner } from "@/components/ui";
-import { apiFetch, type StatusCard } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useLiveReload } from "@/lib/data-refresh";
 import {
   PARCEL_CREATED_EVENT,
   useOptionalPortalCreateParcel,
 } from "@/lib/portal-create-parcel";
+import { countByParcelStatus } from "@/lib/dashboard-statuses";
 import { buildOpsStatusKpis } from "@/lib/ops-status-kpis";
 import { useT } from "@/i18n/locale-context";
 import { portalHomeFor } from "@/lib/portal-home";
@@ -121,7 +122,6 @@ export function AdminNavexDashboard({
   const root = useRef<HTMLDivElement>(null);
   const home = useMemo(() => portalHomeFor(role, t), [role, t]);
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
-  const [statusCards, setStatusCards] = useState<StatusCard[]>([]);
   const [categories, setCategories] = useState<StatusCategory[]>([]);
   const [parcels, setParcels] = useState<RecentParcel[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -137,7 +137,6 @@ export function AdminNavexDashboard({
       if (!token) return;
       if (!opts?.silent) setLoading(true);
       Promise.all([
-        apiFetch<StatusCard[]>("/dashboard/status-counts", { token }),
         apiFetch<AnalyticsPayload>("/dashboard/analytics", { token }).catch(
           () => emptyAnalytics(),
         ),
@@ -152,8 +151,7 @@ export function AdminNavexDashboard({
           ? apiFetch<Ticket[]>("/tickets", { token }).catch(() => [] as Ticket[])
           : Promise.resolve([] as Ticket[]),
       ])
-        .then(([counts, stats, list, cats, paymentList, ticketList]) => {
-          setStatusCards(counts);
+        .then(([stats, list, cats, paymentList, ticketList]) => {
           setAnalytics(stats ?? emptyAnalytics());
           setParcels(list);
           setCategories(
@@ -238,33 +236,25 @@ export function AdminNavexDashboard({
   }, [analytics?.soldes?.disponible, isExpediteurHome, parcels, payments, tickets]);
 
   const statusKpis = useMemo(() => {
-    const countsByStatus = new Map(
-      statusCards.map((card) => [card.key, card.count] as const),
-    );
-    const filteredTotal = home.kpiStatusKeys?.length
-      ? home.kpiStatusKeys.reduce(
-          (sum, key) => sum + (countsByStatus.get(key) ?? 0),
-          0,
-        )
-      : analytics?.kpis.total;
+    const countsByStatus = countByParcelStatus(parcels);
+    const totalCount = parcels.filter((p) => p.status !== "SUPPRIME").length;
 
     return buildOpsStatusKpis({
       basePath,
       countsByStatus,
       totalLabel: home.totalLabel,
-      totalCount: filteredTotal,
+      totalCount,
       categories,
       statusKeysFilter: home.kpiStatusKeys,
       hrefBase: home.kpiHrefBase,
     });
   }, [
-    analytics?.kpis.total,
     basePath,
     categories,
     home.kpiHrefBase,
     home.kpiStatusKeys,
     home.totalLabel,
-    statusCards,
+    parcels,
   ]);
 
   useGSAP(

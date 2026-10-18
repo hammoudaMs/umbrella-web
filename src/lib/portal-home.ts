@@ -19,6 +19,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import type { TranslateFn } from "@/i18n/types";
+import { DASHBOARD_STATUS_KEYS } from "@/lib/dashboard-statuses";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 
 export type HomeShortcut = {
@@ -573,17 +574,7 @@ export function portalHomeFor(
       showDeliveredRecent: false,
       asideMode: "expediteur",
       showAnalyticsLink: false,
-      kpiStatusKeys: [
-        "EN_ATTENTE",
-        "ENLEVES",
-        "AU_DEPOT",
-        "EN_COURS",
-        "LIVRES",
-        "LIVRAISON_ANNULEE",
-        "RETOUR_DEPOT",
-        "RETOUR_EXPEDITEURS",
-        "RETOUR_RECU",
-      ],
+      kpiStatusKeys: [...DASHBOARD_STATUS_KEYS],
       primaryHref: `${b}/parcels`,
       primaryLabel: t("home.newParcel"),
       primaryHint: t("home.createDelivery"),

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -419,7 +418,7 @@ function OpsKpiCard({
           <Icon className="h-5 w-5" strokeWidth={2.25} />
         </span>
         <div className="min-w-0 flex-1 lg:contents">
-          <p className="truncate text-[14px] font-semibold leading-tight text-ops-ink lg:col-start-2 lg:row-start-1 lg:text-[13px] lg:font-medium">
+          <p className="text-[14px] font-semibold leading-snug text-ops-ink lg:col-start-2 lg:row-start-1 lg:text-[13px] lg:font-medium">
             {kpi.label}
           </p>
           <p className="mt-1.5 font-display text-[1.75rem] font-extrabold leading-none tabular-nums tracking-tight text-ops-ink lg:col-start-2 lg:row-start-2 lg:mt-0 lg:text-[1.65rem]">
@@ -617,26 +616,26 @@ export function OpsDashboardBoard({
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute inset-0 bg-gradient-to-br from-ops-page via-ops-surface to-[#241014]" />
           <HeroVanScene variant="portal" />
-          <div className="absolute inset-0 bg-gradient-to-r from-ops-page from-[0%] via-ops-page/88 via-[32%] to-transparent to-[58%]" />
-          <div className="absolute inset-y-0 left-0 w-[min(100%,22rem)] bg-gradient-to-r from-ops-page/90 via-ops-page/55 to-transparent sm:w-[26rem]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-ops-page from-[0%] via-ops-page/92 via-[36%] to-transparent to-[62%]" />
+          <div className="absolute inset-y-0 left-0 w-[min(100%,24rem)] bg-gradient-to-r from-ops-page via-ops-page/70 to-transparent sm:w-[28rem]" />
           <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-ops-page/55 to-transparent" />
         </div>
         <div className="relative z-10 flex min-h-[220px] flex-col justify-between gap-5 px-4 py-5 sm:min-h-[240px] sm:flex-row sm:items-end sm:px-5 lg:px-6 lg:py-6">
-          <div className="relative z-10 flex min-w-0 max-w-[17.5rem] flex-col sm:max-w-[20rem]">
-            <h1 className="font-display text-[1.65rem] font-extrabold leading-[1.15] tracking-tight text-ops-ink drop-shadow-[0_2px_12px_rgba(0,0,0,0.65)] sm:text-[1.85rem]">
+          <div className="relative z-10 flex min-w-0 max-w-[18rem] flex-col sm:max-w-[21rem]">
+            <h1 className="font-display text-[1.65rem] font-extrabold leading-[1.15] tracking-tight text-ops-ink drop-shadow-[0_2px_16px_rgba(0,0,0,0.85)] sm:text-[1.85rem]">
               Bonjour{firstName ? ` ${firstName}` : ""}
             </h1>
-            <p className="mt-2 max-w-[16rem] text-[13px] leading-snug text-ops-ink/75 sm:text-[14px] sm:leading-relaxed">
+            <p className="mt-2 max-w-[17rem] text-[13px] font-medium leading-snug text-ops-ink drop-shadow-[0_1px_10px_rgba(0,0,0,0.75)] sm:text-[14px] sm:leading-relaxed">
               {subtitle}
             </p>
 
             {solde != null ? (
-              <div className="mt-4 inline-flex w-fit items-center gap-2.5 rounded-full border border-emerald-500/35 bg-black/45 px-3.5 py-2 shadow-[0_4px_16px_rgba(0,0,0,0.35)] backdrop-blur-md dark:bg-black/50">
+              <div className="mt-4 inline-flex w-fit items-center gap-2.5 rounded-full border border-emerald-500/35 bg-black/55 px-3.5 py-2 shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
                 <Coins
                   className="h-4 w-4 shrink-0 text-emerald-400"
                   aria-hidden
                 />
-                <span className="text-[12px] font-semibold uppercase tracking-wide text-emerald-300/90">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-emerald-300">
                   Solde
                 </span>
                 <span className="font-display text-[15px] font-extrabold tabular-nums text-white">
@@ -645,16 +644,16 @@ export function OpsDashboardBoard({
               </div>
             ) : null}
 
-            <p className="mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] capitalize text-ops-ink/55">
+            <p className="mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] font-medium capitalize text-ops-ink/80 drop-shadow-[0_1px_8px_rgba(0,0,0,0.7)]">
               <span className="inline-flex items-center gap-1.5">
-                <CalendarDays className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                <CalendarDays className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
                 {formatGreetingDate(now)}
               </span>
-              <span className="text-ops-ink/25" aria-hidden>
+              <span className="text-ops-ink/35" aria-hidden>
                 ·
               </span>
               <span className="inline-flex items-center gap-1.5 normal-case">
-                <Clock className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                <Clock className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
                 {formatGreetingTime(now)}
               </span>
             </p>
@@ -956,159 +955,6 @@ export function OpsDashboardBoard({
           </div>
           ) : null}
 
-          <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-ops-card bg-ops-surface p-4 shadow-ops">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-[18px] font-semibold text-ops-ink lg:text-[16px]">
-                Derniers colis
-              </h2>
-              <Link
-                href={parcelsHref}
-                className="text-[14px] font-semibold text-ops-accent"
-              >
-                Voir tout →
-              </Link>
-            </div>
-
-            <div className="mt-3 hidden flex-1 lg:block">
-              <table className="w-full text-left text-[14px]">
-                <thead>
-                  <tr className="border-b border-ops-card text-[12px] uppercase tracking-[0.08em] text-ops-ink/40">
-                    <SortableTh
-                      label="N° de colis"
-                      column="code"
-                      activeKey={recentSortKey}
-                      sortDir={recentSortDir}
-                      onSort={toggleRecentSort}
-                      className="pb-2.5 pr-3"
-                      buttonClassName="uppercase tracking-[0.08em]"
-                    />
-                    <SortableTh
-                      label="Client"
-                      column="recipientName"
-                      activeKey={recentSortKey}
-                      sortDir={recentSortDir}
-                      onSort={toggleRecentSort}
-                      className="pb-2.5 pr-3"
-                      buttonClassName="uppercase tracking-[0.08em]"
-                    />
-                    <SortableTh
-                      label="Ville"
-                      column="city"
-                      activeKey={recentSortKey}
-                      sortDir={recentSortDir}
-                      onSort={toggleRecentSort}
-                      className="pb-2.5 pr-3"
-                      buttonClassName="uppercase tracking-[0.08em]"
-                    />
-                    <SortableTh
-                      label="Statut"
-                      column="status"
-                      activeKey={recentSortKey}
-                      sortDir={recentSortDir}
-                      onSort={toggleRecentSort}
-                      className="pb-2.5 pr-3"
-                      buttonClassName="uppercase tracking-[0.08em]"
-                    />
-                    <SortableTh
-                      label="Montant"
-                      column="price"
-                      activeKey={recentSortKey}
-                      sortDir={recentSortDir}
-                      onSort={toggleRecentSort}
-                      className="pb-2.5 pr-3"
-                      buttonClassName="uppercase tracking-[0.08em]"
-                    />
-                    <SortableTh
-                      label="Date"
-                      column="createdAt"
-                      activeKey={recentSortKey}
-                      sortDir={recentSortDir}
-                      onSort={toggleRecentSort}
-                      className="pb-2.5"
-                      buttonClassName="uppercase tracking-[0.08em]"
-                    />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-ops-ink/[0.08]">
-                  {recentSorted.slice(0, 12).map((p) => (
-                    <tr key={p.id} className="hover:bg-ops-ink/[0.03]">
-                      <td className="py-3.5 pr-3">
-                        <Link
-                          href={`${basePath}/parcels/${p.id}`}
-                          className="font-mono text-[14px] font-bold text-ops-accent"
-                        >
-                          {p.code ?? `#${p.id}`}
-                        </Link>
-                      </td>
-                      <td className="py-3.5 pr-3 text-[14px] font-medium text-ops-ink/90">
-                        {p.recipientName}
-                      </td>
-                      <td className="py-3.5 pr-3 text-[14px] text-ops-ink/55">
-                        {p.city}
-                      </td>
-                      <td className="py-3.5 pr-3">
-                        <StatusPill status={p.status} />
-                      </td>
-                      <td className="py-3.5 pr-3 text-[14px] font-bold tabular-nums">
-                        {formatPrice(p.price)}
-                      </td>
-                      <td className="py-3.5 text-[13px] text-ops-ink/45">
-                        <span className="inline-flex items-center gap-1">
-                          {formatShortDate(p.createdAt)}
-                          <ChevronRight
-                            className="h-4 w-4 text-ops-ink/25"
-                            aria-hidden
-                          />
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <ul className="mt-2 divide-y divide-ops-ink/[0.08] lg:hidden">
-              {recent.length === 0 ? (
-                <li className="py-8 text-center text-base text-ops-ink/40">
-                  Aucun colis récent
-                </li>
-              ) : (
-                recent.slice(0, 12).map((p) => (
-                  <li key={p.id}>
-                    <Link
-                      href={`${basePath}/parcels/${p.id}`}
-                      className="flex min-h-[4.75rem] items-center justify-between gap-3 py-3.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-mono text-[15px] font-bold text-ops-accent">
-                          {p.code ?? `#${p.id}`}
-                        </p>
-                        <p className="mt-0.5 truncate text-[15px] font-semibold">
-                          {p.recipientName}
-                        </p>
-                        <p className="mt-0.5 text-[13px] text-ops-ink/45">
-                          {p.city} · {formatShortDate(p.createdAt)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 text-right">
-                        <div>
-                          <StatusPill status={p.status} />
-                          <p className="mt-1.5 text-[15px] font-extrabold tabular-nums">
-                            {formatPrice(p.price)}
-                          </p>
-                        </div>
-                        <ChevronRight
-                          className="h-5 w-5 text-ops-ink/30"
-                          aria-hidden
-                        />
-                      </div>
-                    </Link>
-                  </li>
-                ))
-              )}
-            </ul>
-          </section>
-
           {showReturns ? (
           <section className="shrink-0 rounded-2xl border border-ops-card bg-ops-surface p-3.5 shadow-ops">
             <div className="flex items-center justify-between gap-2">
@@ -1220,25 +1066,6 @@ export function OpsDashboardBoard({
                 );
               })}
             </ul>
-          </section>
-
-          <section className="overflow-hidden rounded-2xl border border-ops-card bg-ops-surface shadow-ops">
-            <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-              <div className="min-w-0">
-                <h2 className="font-display text-[14px] font-bold leading-snug text-ops-ink">
-                  Livraison plus rapide, plus proche de vos clients
-                </h2>
-              </div>
-              <div className="relative h-12 w-24 shrink-0">
-                <Image
-                  src="/assets/cargo-van-clean.png"
-                  alt=""
-                  fill
-                  className="object-contain object-right"
-                  sizes="96px"
-                />
-              </div>
-            </div>
           </section>
 
           {isExpediteurAside && expediteurAside ? (
@@ -1540,6 +1367,159 @@ export function OpsDashboardBoard({
           )}
         </aside>
       </div>
+
+      <section className="rounded-2xl border border-ops-card bg-ops-surface p-4 shadow-ops">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-[18px] font-semibold text-ops-ink lg:text-[16px]">
+            Derniers colis
+          </h2>
+          <Link
+            href={parcelsHref}
+            className="text-[14px] font-semibold text-ops-accent"
+          >
+            Voir tout →
+          </Link>
+        </div>
+
+        <div className="mt-3 hidden lg:block">
+          <table className="w-full text-left text-[14px]">
+            <thead>
+              <tr className="border-b border-ops-card text-[12px] uppercase tracking-[0.08em] text-ops-ink/40">
+                <SortableTh
+                  label="N° de colis"
+                  column="code"
+                  activeKey={recentSortKey}
+                  sortDir={recentSortDir}
+                  onSort={toggleRecentSort}
+                  className="pb-2.5 pr-3"
+                  buttonClassName="uppercase tracking-[0.08em]"
+                />
+                <SortableTh
+                  label="Client"
+                  column="recipientName"
+                  activeKey={recentSortKey}
+                  sortDir={recentSortDir}
+                  onSort={toggleRecentSort}
+                  className="pb-2.5 pr-3"
+                  buttonClassName="uppercase tracking-[0.08em]"
+                />
+                <SortableTh
+                  label="Ville"
+                  column="city"
+                  activeKey={recentSortKey}
+                  sortDir={recentSortDir}
+                  onSort={toggleRecentSort}
+                  className="pb-2.5 pr-3"
+                  buttonClassName="uppercase tracking-[0.08em]"
+                />
+                <SortableTh
+                  label="Statut"
+                  column="status"
+                  activeKey={recentSortKey}
+                  sortDir={recentSortDir}
+                  onSort={toggleRecentSort}
+                  className="pb-2.5 pr-3"
+                  buttonClassName="uppercase tracking-[0.08em]"
+                />
+                <SortableTh
+                  label="Montant"
+                  column="price"
+                  activeKey={recentSortKey}
+                  sortDir={recentSortDir}
+                  onSort={toggleRecentSort}
+                  className="pb-2.5 pr-3"
+                  buttonClassName="uppercase tracking-[0.08em]"
+                />
+                <SortableTh
+                  label="Date"
+                  column="createdAt"
+                  activeKey={recentSortKey}
+                  sortDir={recentSortDir}
+                  onSort={toggleRecentSort}
+                  className="pb-2.5"
+                  buttonClassName="uppercase tracking-[0.08em]"
+                />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ops-ink/[0.08]">
+              {recentSorted.slice(0, 12).map((p) => (
+                <tr key={p.id} className="hover:bg-ops-ink/[0.03]">
+                  <td className="py-3.5 pr-3">
+                    <Link
+                      href={`${basePath}/parcels/${p.id}`}
+                      className="font-mono text-[14px] font-bold text-ops-accent"
+                    >
+                      {p.code ?? `#${p.id}`}
+                    </Link>
+                  </td>
+                  <td className="py-3.5 pr-3 text-[14px] font-medium text-ops-ink/90">
+                    {p.recipientName}
+                  </td>
+                  <td className="py-3.5 pr-3 text-[14px] text-ops-ink/55">
+                    {p.city}
+                  </td>
+                  <td className="py-3.5 pr-3">
+                    <StatusPill status={p.status} />
+                  </td>
+                  <td className="py-3.5 pr-3 text-[14px] font-bold tabular-nums">
+                    {formatPrice(p.price)}
+                  </td>
+                  <td className="py-3.5 text-[13px] text-ops-ink/45">
+                    <span className="inline-flex items-center gap-1">
+                      {formatShortDate(p.createdAt)}
+                      <ChevronRight
+                        className="h-4 w-4 text-ops-ink/25"
+                        aria-hidden
+                      />
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <ul className="mt-2 divide-y divide-ops-ink/[0.08] lg:hidden">
+          {recent.length === 0 ? (
+            <li className="py-8 text-center text-base text-ops-ink/40">
+              Aucun colis récent
+            </li>
+          ) : (
+            recent.slice(0, 12).map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`${basePath}/parcels/${p.id}`}
+                  className="flex min-h-[4.75rem] items-center justify-between gap-3 py-3.5"
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono text-[15px] font-bold text-ops-accent">
+                      {p.code ?? `#${p.id}`}
+                    </p>
+                    <p className="mt-0.5 truncate text-[15px] font-semibold">
+                      {p.recipientName}
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-ops-ink/45">
+                      {p.city} · {formatShortDate(p.createdAt)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 text-right">
+                    <div>
+                      <StatusPill status={p.status} />
+                      <p className="mt-1.5 text-[15px] font-extrabold tabular-nums">
+                        {formatPrice(p.price)}
+                      </p>
+                    </div>
+                    <ChevronRight
+                      className="h-5 w-5 text-ops-ink/30"
+                      aria-hidden
+                    />
+                  </div>
+                </Link>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
 
       <footer className="flex flex-col gap-2 border-t border-ops-card pt-3 text-[12px] text-ops-ink/40 sm:flex-row sm:items-center sm:justify-between">
         <span>
