@@ -1,18 +1,27 @@
 "use client";
 
-import { useMemo, type ComponentType } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Ban,
   Building2,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  Hourglass,
   LayoutGrid,
   Package,
   PackageCheck,
   RotateCcw,
   Truck,
   UserRound,
-  Hourglass,
   type LucideProps,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -26,6 +35,15 @@ import { REASON_VISIBLE_STATUSES } from "@/lib/parcel-transitions";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 type Countable = { status: string };
+
+type FilterOption = {
+  key: string | null;
+  label: string;
+  title: string;
+  count: number;
+  color: string;
+  Icon: ComponentType<LucideProps>;
+};
 
 const SHORT_LABEL: Partial<Record<StatusKey, string>> = {
   EN_ATTENTE: "En attente",
@@ -46,11 +64,10 @@ const SHORT_LABEL: Partial<Record<StatusKey, string>> = {
   RETOUR_INTER_AGENCE: "Inter-agence",
   A_VERIFIER: "À vérifier",
   NON_SERIEUX: "Non sérieux",
+  ECHANGES: "Échanges",
 };
 
-const STATUS_ICON: Partial<
-  Record<StatusKey, ComponentType<LucideProps>>
-> = {
+const STATUS_ICON: Partial<Record<StatusKey, ComponentType<LucideProps>>> = {
   EN_ATTENTE: Hourglass,
   A_ENLEVER: Hourglass,
   ENLEVES: PackageCheck,
@@ -69,6 +86,7 @@ const STATUS_ICON: Partial<
   RETOUR_INTER_AGENCE: RotateCcw,
   A_VERIFIER: Package,
   NON_SERIEUX: Ban,
+  ECHANGES: Package,
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -85,6 +103,9 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current = searchParams.get("status");
+  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
 
   const counts = useMemo(() => countByParcelStatus(parcels), [parcels]);
 
@@ -111,46 +132,163 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
     [parcels],
   );
 
+  const options = useMemo((): FilterOption[] => {
+    const all: FilterOption = {
+      key: null,
+      label: "Tous",
+      title: "Tous les colis",
+      count: totalCount,
+      color: "#991211",
+      Icon: LayoutGrid,
+    };
+    const rest = keys.map((key) => {
+      const meta = STATUS_META[key];
+      return {
+        key,
+        label: SHORT_LABEL[key] ?? meta?.label ?? key,
+        title: meta?.label ?? key,
+        count: countForStatusKey(key, counts),
+        color: meta?.color ?? "#64748b",
+        Icon: STATUS_ICON[key] ?? Package,
+      };
+    });
+    return [all, ...rest];
+  }, [counts, keys, totalCount]);
+
+  const selected =
+    options.find((opt) => opt.key === current) ?? options[0]!;
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   function go(status: string | null) {
     const params = new URLSearchParams(searchParams.toString());
     if (status) params.set("status", status);
     else params.delete("status");
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    setOpen(false);
   }
+
+  const SelectedIcon = selected.Icon;
 
   return (
     <div className="space-y-1.5">
-      <div
-        role="tablist"
-        aria-label="Filtrer par statut"
-        className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 lg:gap-2"
-      >
-        <FilterChip
-          label="Tous"
-          count={totalCount}
-          active={!current}
-          color="#991211"
-          onClick={() => go(null)}
-          Icon={LayoutGrid}
-        />
-        {keys.map((key) => {
-          const meta = STATUS_META[key];
-          const Icon = STATUS_ICON[key] ?? Package;
-          return (
-            <FilterChip
-              key={key}
-              label={SHORT_LABEL[key] ?? meta?.label ?? key}
-              title={meta?.label ?? key}
-              count={countForStatusKey(key, counts)}
-              active={current === key}
-              color={meta?.color ?? "#64748b"}
-              onClick={() => go(key)}
-              Icon={Icon}
-            />
-          );
-        })}
+      <div ref={rootRef} className="relative max-w-md">
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            "flex w-full min-h-11 items-center gap-2.5 rounded-xl border bg-ops-surface px-3 py-2 text-left transition",
+            "border-ops-card hover:border-ops-ink/20",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+            open && "border-ops-accent/40 ring-1 ring-ops-accent/20",
+          )}
+        >
+          <span
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            style={{
+              backgroundColor: hexToRgba(selected.color, 0.2),
+              color: selected.color,
+            }}
+            aria-hidden
+          >
+            <SelectedIcon className="h-4 w-4" strokeWidth={2.25} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-ops-ink/40">
+              Statut
+            </span>
+            <span className="mt-0.5 flex items-center gap-2">
+              <span className="truncate text-[13px] font-semibold text-ops-ink">
+                {selected.label}
+              </span>
+              <span className="shrink-0 font-display text-[13px] font-bold tabular-nums text-ops-ink/45">
+                {selected.count}
+              </span>
+            </span>
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-ops-ink/40 transition",
+              open && "rotate-180",
+            )}
+            aria-hidden
+          />
+        </button>
+
+        {open ? (
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label="Filtrer par statut"
+            className="absolute z-30 mt-1.5 max-h-72 w-full overflow-y-auto rounded-xl border border-ops-card bg-ops-surface py-1 shadow-lg"
+          >
+            {options.map((opt) => {
+              const active = opt.key === selected.key;
+              const Icon = opt.Icon;
+              return (
+                <li key={opt.key ?? "all"} role="option" aria-selected={active}>
+                  <button
+                    type="button"
+                    title={opt.title}
+                    onClick={() => go(opt.key)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 px-2.5 py-2 text-left transition",
+                      active
+                        ? "bg-ops-accent/10"
+                        : "hover:bg-ops-ink/[0.05]",
+                    )}
+                  >
+                    <span
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      style={{
+                        backgroundColor: hexToRgba(opt.color, 0.18),
+                        color: opt.color,
+                      }}
+                      aria-hidden
+                    >
+                      <Icon className="h-3.5 w-3.5" strokeWidth={2.25} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ops-ink">
+                      {opt.label}
+                    </span>
+                    <span className="shrink-0 font-display text-[13px] font-bold tabular-nums text-ops-ink/45">
+                      {opt.count}
+                    </span>
+                    {active ? (
+                      <Check
+                        className="h-4 w-4 shrink-0 text-ops-accent"
+                        aria-hidden
+                      />
+                    ) : (
+                      <span className="w-4 shrink-0" aria-hidden />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
       </div>
+
       {current ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <button
@@ -168,71 +306,5 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  title,
-  count,
-  active,
-  color,
-  onClick,
-  Icon,
-}: {
-  label: string;
-  title?: string;
-  count: number;
-  active: boolean;
-  color: string;
-  onClick: () => void;
-  Icon: ComponentType<LucideProps>;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      title={title ?? label}
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
-        active
-          ? "border-transparent text-ops-ink"
-          : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/15 hover:text-ops-ink",
-        count === 0 && !active ? "opacity-45" : null,
-      )}
-      style={
-        active
-          ? {
-              backgroundColor: hexToRgba(color, 0.16),
-              boxShadow: `inset 0 0 0 1px ${hexToRgba(color, 0.45)}`,
-            }
-          : undefined
-      }
-    >
-      <span
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-        style={{
-          backgroundColor: hexToRgba(color, active ? 0.28 : 0.14),
-          color,
-        }}
-        aria-hidden
-      >
-        <Icon className="h-3 w-3" strokeWidth={2.25} />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-tight tracking-tight">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "shrink-0 font-display text-[13px] font-bold tabular-nums leading-none",
-          active ? "text-ops-ink" : "text-ops-ink/40",
-        )}
-      >
-        {count}
-      </span>
-    </button>
   );
 }
