@@ -350,7 +350,7 @@ export function SenderFinancesPage() {
         <div
           role="tablist"
           aria-label={t("finances.stockLead")}
-          className="grid grid-cols-5 gap-1.5 lg:gap-2"
+          className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 lg:gap-2"
         >
           {filters.map((f) => {
             const active = stage === f.key;
@@ -362,21 +362,19 @@ export function SenderFinancesPage() {
                 aria-selected={active}
                 onClick={() => setStage(f.key)}
                 className={cn(
-                  "flex min-h-[3.25rem] w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center transition sm:min-h-[3.5rem] sm:px-1.5 lg:min-h-14 lg:px-2",
+                  "flex min-h-14 min-w-[6.25rem] flex-1 basis-0 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center transition",
                   active
                     ? "border-ops-accent bg-ops-accent text-white"
                     : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
                 )}
               >
-                <span className="w-full whitespace-normal break-words text-[10px] font-semibold leading-snug sm:text-[11px] lg:text-sm">
+                <span className="w-full text-[11px] font-semibold leading-snug sm:text-xs lg:text-sm">
                   {f.label}
                 </span>
                 <span
                   className={cn(
-                    "text-sm font-bold tabular-nums leading-none lg:rounded-md lg:px-1.5 lg:py-0.5 lg:text-xs",
-                    active
-                      ? "text-white lg:bg-white/20"
-                      : "text-ops-ink lg:bg-ops-ink/[0.06] lg:text-ops-ink/60",
+                    "text-sm font-bold tabular-nums leading-none",
+                    active ? "text-white" : "text-ops-ink",
                   )}
                 >
                   {loading ? "…" : f.count}
