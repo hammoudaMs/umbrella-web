@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { SenderZonesSales } from "@/components/SenderZonesSales";
-
+/** Zones live inside Finances — single stock/goods hub for expéditeur. */
 export default function ExpediteurZonesPage() {
-  return <SenderZonesSales />;
+  redirect("/expediteur/finances");
 }

@@ -56,6 +56,7 @@ import {
   type AppRole,
 } from "@/lib/roles";
 import { useStatusLabel } from "@/i18n/hooks";
+import type { StatusCategory } from "@/lib/status-categories";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import { useAuth } from "@/lib/auth-context";
 import { useApi, useApiQuery } from "@/lib/use-api";
@@ -167,6 +168,9 @@ export function ParcelDetailView({
   const { data: parcel, error, loading, reload } = useApiQuery<Parcel>(
     `/parcels/${parcelId}`,
   );
+  const { data: statusCategories } = useApiQuery<StatusCategory[]>(
+    "/status-categories",
+  );
 
   // Refresh when returning from scanner so parcours / history stay in sync.
   useEffect(() => {
@@ -226,7 +230,10 @@ export function ParcelDetailView({
     );
   }
 
-  const parcours = buildParcours(parcel.status);
+  const parcours = buildParcours(parcel.status, {
+    role,
+    categories: statusCategories,
+  });
   const dispatched = isDispatched(parcel);
   const timeline = sortedTimeline(parcel.timeline, parcel.createdAt);
   const lastActor = lastTimelineActor(parcel.timeline);

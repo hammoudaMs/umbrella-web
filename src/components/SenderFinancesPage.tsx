@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Boxes,
   Package,
@@ -11,12 +11,15 @@ import {
   TrendingUp,
   Truck,
 } from "lucide-react";
+import { SenderPlacePerformance } from "@/components/SenderPlacePerformance";
 import {
   Badge,
   EmptyState,
   ErrorBanner,
   PageHeader,
+  SegmentedTabs,
   StatCard,
+  StatusBadge,
   TableCard,
   tableClass,
   tdClass,
@@ -26,6 +29,7 @@ import {
 } from "@/components/ui";
 import { useT } from "@/i18n/locale-context";
 import { formatTnd, toAmount, type Parcel } from "@/lib/domain";
+import { displayGovernorate } from "@/lib/normalize-text";
 import {
   deliveryFeeOf,
   isDeliveredStatus,
@@ -88,13 +92,19 @@ function parcelValue(p: Parcel): number {
   return salePriceOf(moneyOf(p));
 }
 
+type StockView = "open" | "closed" | "all";
+
 export function SenderFinancesPage() {
   const t = useT();
   const analytics = useApiQuery<AnalyticsPayload>("/dashboard/analytics");
   const parcels = useApiQuery<Parcel[]>("/parcels");
+  const [stockView, setStockView] = useState<StockView>("open");
 
   const soldes = analytics.data?.soldes;
-  const list = parcels.data ?? [];
+  const list = useMemo(
+    () => (parcels.data ?? []).filter((p) => p.status !== "SUPPRIME"),
+    [parcels.data],
+  );
 
   const stock = useMemo(() => {
     const buckets: StockBucket[] = [
@@ -158,10 +168,38 @@ export function SenderFinancesPage() {
 
   const openStockValue = stock[0].value + stock[1].value;
   const openStockCount = stock[0].count + stock[1].count;
-  const fees =
-    (soldes?.fraisLivraison ?? 0) + (soldes?.retoursFrais ?? 0);
+  const closedCount = stock[2].count + stock[3].count;
+  const closedValue = stock[2].value + stock[3].value;
 
-  const rows = useMemo(() => {
+  const inventory = useMemo(() => {
+    return list
+      .filter((p) => {
+        const open = PREP.has(p.status) || PIPE.has(p.status);
+        const closed = isDeliveredStatus(p.status) || isReturnStatus(p.status);
+        if (stockView === "open") return open;
+        if (stockView === "closed") return closed;
+        return open || closed;
+      })
+      .slice(0, 100)
+      .map((p) => {
+        const m = moneyOf(p);
+        return {
+          id: p.id,
+          code: p.code ?? `#${p.id}`,
+          status: p.status,
+          city: p.city,
+          governorate: p.governorate,
+          sale: salePriceOf(m),
+          cod: m.price,
+          deliveryFee: deliveryFeeOf(m),
+          returnFee: isReturnStatus(p.status) ? returnFeeOf(m) : 0,
+          profit: parcelProfitOf(m),
+          inStock: PREP.has(p.status) || PIPE.has(p.status),
+        };
+      });
+  }, [list, stockView]);
+
+  const ledgerRows = useMemo(() => {
     return list
       .filter((p) => isDeliveredStatus(p.status) || isReturnStatus(p.status))
       .slice(0, 80)
@@ -216,31 +254,39 @@ export function SenderFinancesPage() {
           </div>
           <div className="border-b border-ops-card px-5 py-4 sm:border-b-0 lg:border-e">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ops-ink/45">
-              {t("finances.margin")}
+              {t("finances.haveStock")}
             </p>
             <p className="mt-1.5 font-display text-2xl font-extrabold tabular-nums text-emerald-700 dark:text-emerald-300">
-              {loading ? "…" : formatTnd(soldes?.profit ?? 0)}
+              {loading ? "…" : openStockCount}
             </p>
-            <p className="mt-1 text-xs text-ops-ink/45">{t("finances.marginHint")}</p>
+            <p className="mt-1 text-xs text-ops-ink/45">
+              {t("finances.haveStockHint", {
+                value: formatTnd(openStockValue),
+              })}
+            </p>
           </div>
           <div className="border-b border-ops-card px-5 py-4 sm:border-e lg:border-b-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ops-ink/45">
-              {t("finances.sales")}
+              {t("finances.notInStock")}
             </p>
             <p className="mt-1.5 font-display text-2xl font-extrabold tabular-nums text-ops-ink">
-              {loading ? "…" : formatTnd(soldes?.ventes ?? 0)}
+              {loading ? "…" : closedCount}
             </p>
-            <p className="mt-1 text-xs text-ops-ink/45">{t("finances.salesHint")}</p>
+            <p className="mt-1 text-xs text-ops-ink/45">
+              {t("finances.notInStockHint", {
+                value: formatTnd(closedValue),
+              })}
+            </p>
           </div>
           <div className="px-5 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ops-ink/45">
-              {t("finances.fees")}
+              {t("finances.margin")}
             </p>
             <p className="mt-1.5 font-display text-2xl font-extrabold tabular-nums text-ops-ink">
-              {loading ? "…" : formatTnd(fees)}
+              {loading ? "…" : formatTnd(soldes?.profit ?? 0)}
             </p>
             <p className="mt-1 text-xs text-ops-ink/45">
-              {t("finances.feesHint", {
+              {t("finances.salesHint")} · {t("finances.feesHint", {
                 liv: formatTnd(soldes?.fraisLivraison ?? 0),
                 ret: formatTnd(soldes?.retoursFrais ?? 0),
               })}
@@ -278,6 +324,102 @@ export function SenderFinancesPage() {
 
       <TableCard
         toolbar={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-ops-ink">
+                {t("finances.inventoryTitle")}
+              </p>
+              <p className="text-xs text-ops-ink/45">
+                {t("finances.inventoryHint")}
+              </p>
+            </div>
+            <SegmentedTabs<StockView>
+              label={t("finances.filterStock")}
+              value={stockView}
+              onChange={setStockView}
+              options={[
+                {
+                  value: "open",
+                  label: t("finances.stockOpenOnly"),
+                  count: openStockCount,
+                },
+                {
+                  value: "closed",
+                  label: t("finances.stockClosedOnly"),
+                  count: closedCount,
+                },
+                {
+                  value: "all",
+                  label: t("finances.stockAll"),
+                  count: list.length,
+                },
+              ]}
+            />
+          </div>
+        }
+      >
+        {inventory.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title={t("finances.inventoryEmpty")}
+            description={t("finances.inventoryEmptyHint")}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={tableClass}>
+              <thead className={theadClass}>
+                <tr>
+                  <th className={thClass}>{t("finances.colParcel")}</th>
+                  <th className={thClass}>{t("finances.colPlace")}</th>
+                  <th className={thClass}>{t("common.status")}</th>
+                  <th className={thClass}>{t("finances.colSale")}</th>
+                  <th className={`${thClass} text-right`}>
+                    {t("finances.stockState")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventory.map((r) => (
+                  <tr key={r.id} className={trClass}>
+                    <td className={tdClass}>
+                      <Link
+                        href={`/expediteur/parcels/${r.id}`}
+                        className="font-mono text-xs font-semibold text-ops-ink hover:text-ops-accent"
+                      >
+                        {r.code}
+                      </Link>
+                    </td>
+                    <td className={tdClass}>
+                      <p className="text-sm text-ops-ink">{r.city || "—"}</p>
+                      <p className="text-[11px] text-ops-ink/40">
+                        {displayGovernorate(r.governorate || "—")}
+                      </p>
+                    </td>
+                    <td className={tdClass}>
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td className={`${tdClass} tabular-nums`}>
+                      {formatTnd(r.sale)}
+                    </td>
+                    <td className={`${tdClass} text-right`}>
+                      <Badge tone={r.inStock ? "success" : "neutral"}>
+                        {r.inStock
+                          ? t("finances.inStockBadge")
+                          : t("finances.outStockBadge")}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </TableCard>
+
+      <SenderPlacePerformance parcels={list} />
+
+      <TableCard
+        toolbar={
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-ops-ink">
@@ -298,7 +440,7 @@ export function SenderFinancesPage() {
           </div>
         }
       >
-        {rows.length === 0 ? (
+        {ledgerRows.length === 0 ? (
           <EmptyState
             icon={Package}
             title={t("finances.emptyTitle")}
@@ -320,7 +462,7 @@ export function SenderFinancesPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {ledgerRows.map((r) => (
                   <tr key={r.id} className={trClass}>
                     <td className={tdClass}>
                       <Link

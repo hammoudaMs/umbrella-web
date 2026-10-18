@@ -58,7 +58,7 @@ import {
  * so the UI behaves the same with NEXT_PUBLIC_USE_MOCK=true or against umbrella/api.
  */
 
-const STORAGE_KEY = "umbrella.mock-db.v14";
+const STORAGE_KEY = "umbrella.mock-db.v15";
 export const MOCK_RESET_EVENT = "umbrella:mock-db-reset";
 const MAX_RETURN_LOT = 20;
 const MAX_PICKUP_MANIFEST = 20;
@@ -292,7 +292,17 @@ function seedStatusCategories(): StatusCategory[] {
     icon: row.icon,
     sortOrder: row.sortOrder,
     isActive: true,
+    showInJourney: true,
+    visibleRoles: [],
   }));
+}
+
+function normalizeStatusCategory(row: StatusCategory): StatusCategory {
+  return {
+    ...row,
+    showInJourney: row.showInJourney !== false,
+    visibleRoles: Array.isArray(row.visibleRoles) ? row.visibleRoles : [],
+  };
 }
 
 const INTERNAL_ROUTE_GOVS = new Set([
@@ -582,6 +592,10 @@ function isMockDb(value: unknown): value is MockDb {
   if (!baseOk) return false;
   if (!Array.isArray(v.statusCategories)) {
     v.statusCategories = seedStatusCategories();
+  } else {
+    v.statusCategories = (v.statusCategories as StatusCategory[]).map(
+      normalizeStatusCategory,
+    );
   }
   if (!Array.isArray(v.agencies)) {
     v.agencies = structuredClone(MOCK_AGENCIES);
@@ -4462,6 +4476,10 @@ const ROUTES: Route[] = [
             ? body.sortOrder
             : store.statusCategories.length,
         isActive: body.isActive !== false,
+        showInJourney: body.showInJourney !== false,
+        visibleRoles: Array.isArray(body.visibleRoles)
+          ? body.visibleRoles.map(String)
+          : [],
       };
       store.statusCategories.push(row);
       commit();
@@ -4492,6 +4510,12 @@ const ROUTES: Route[] = [
       }
       if (typeof body.sortOrder === "number") row.sortOrder = body.sortOrder;
       if (typeof body.isActive === "boolean") row.isActive = body.isActive;
+      if (typeof body.showInJourney === "boolean") {
+        row.showInJourney = body.showInJourney;
+      }
+      if (Array.isArray(body.visibleRoles)) {
+        row.visibleRoles = body.visibleRoles.map(String);
+      }
       commit();
       return row;
     },

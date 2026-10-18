@@ -2,6 +2,7 @@ import {
   Banknote,
   BarChart3,
   Box,
+  Boxes,
   Building2,
   ClipboardList,
   CreditCard,
@@ -125,8 +126,12 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: ScanLine,
         mobilePrimary: true,
       },
-      { href: `${base}/zones`, labelKey: "nav.zones", icon: MapPin },
-      { href: `${base}/finances`, labelKey: "nav.finances", icon: Wallet },
+      {
+        href: `${base}/finances`,
+        labelKey: "nav.stock",
+        icon: Boxes,
+        mobilePrimary: true,
+      },
       { href: `${base}/analytics`, labelKey: "nav.analytics", icon: BarChart3 },
       { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
       {

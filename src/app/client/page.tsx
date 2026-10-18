@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { formatTnd, type Parcel } from "@/lib/domain";
 import { buildParcours } from "@/lib/parcel-parcours";
+import type { StatusCategory } from "@/lib/status-categories";
 import { useApiQuery } from "@/lib/use-api";
 import { cn } from "@/lib/cn";
 import { useT } from "@/i18n/locale-context";
@@ -36,6 +37,9 @@ const IN_TRANSIT = new Set([
 export default function ClientPage() {
   const t = useT();
   const { data, error, loading, reload } = useApiQuery<Parcel[]>("/parcels");
+  const { data: statusCategories } = useApiQuery<StatusCategory[]>(
+    "/status-categories",
+  );
   const parcels = useMemo(() => data ?? [], [data]);
   const inTransit = parcels.filter((p) => IN_TRANSIT.has(p.status)).length;
   const delivered = parcels.filter(
@@ -86,7 +90,10 @@ export default function ClientPage() {
 
       <ul className="space-y-3">
         {parcels.map((p) => {
-          const parcours = buildParcours(p.status);
+          const parcours = buildParcours(p.status, {
+            role: "CLIENT",
+            categories: statusCategories,
+          });
           const doneCount = parcours.steps.filter((s) => s.done || s.current).length;
           const pct = Math.round((doneCount / parcours.steps.length) * 100);
           return (

@@ -609,7 +609,7 @@ export function portalHomeFor(
         },
         {
           href: `${b}/finances`,
-          label: t("nav.finances"),
+          label: t("nav.stock"),
           hint: t("home.businessStock"),
           tone: "bg-amber-700",
           icon: Wallet,

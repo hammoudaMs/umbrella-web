@@ -1,5 +1,9 @@
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 import type { Parcel, TimelineEntry } from "@/lib/domain";
+import {
+  journeyVisibleForRole,
+  type StatusCategory,
+} from "@/lib/status-categories";
 
 export type ParcoursKind = "LIVRAISON" | "RETOUR";
 
@@ -9,6 +13,13 @@ export type ParcoursStep = {
   done: boolean;
   current: boolean;
   upcoming: boolean;
+};
+
+export type ParcoursVisibilityOptions = {
+  role?: string | null;
+  categories?: Array<
+    Pick<StatusCategory, "key" | "showInJourney" | "visibleRoles">
+  > | null;
 };
 
 const LIVRAISON_STEPS: StatusKey[] = [
@@ -66,7 +77,24 @@ export function parcoursLabel(kind: ParcoursKind): string {
     : "Parcours livraison";
 }
 
-export function buildParcours(status: string): {
+function filterPathForRole(
+  path: StatusKey[],
+  options?: ParcoursVisibilityOptions,
+): StatusKey[] {
+  const categories = options?.categories;
+  if (!categories?.length) return path;
+  const byKey = new Map(categories.map((c) => [c.key, c]));
+  return path.filter((key) => {
+    const cfg = byKey.get(key);
+    if (!cfg) return true;
+    return journeyVisibleForRole(cfg, options?.role);
+  });
+}
+
+export function buildParcours(
+  status: string,
+  options?: ParcoursVisibilityOptions,
+): {
   kind: ParcoursKind;
   label: string;
   steps: ParcoursStep[];
@@ -74,14 +102,24 @@ export function buildParcours(status: string): {
   nextLabel: string | null;
 } {
   const kind = detectParcoursKind(status);
-  const path = parcoursStepsFor(kind);
-  let idx = path.indexOf(status as StatusKey);
+  const fullPath = parcoursStepsFor(kind);
+  let fullIdx = fullPath.indexOf(status as StatusKey);
 
   if (kind === "LIVRAISON" && status === "A_ENLEVER") {
-    idx = path.indexOf("EN_ATTENTE");
+    fullIdx = fullPath.indexOf("EN_ATTENTE");
   }
   if (status === "LIVRES_PAYES" || status === "REMBOURSES") {
-    idx = path.length - 1;
+    fullIdx = fullPath.length - 1;
+  }
+
+  const path = filterPathForRole(fullPath, options);
+  let idx = path.indexOf(status as StatusKey);
+  if (idx < 0 && fullIdx >= 0) {
+    idx = -1;
+    for (let i = 0; i < path.length; i++) {
+      const original = fullPath.indexOf(path[i]!);
+      if (original >= 0 && original <= fullIdx) idx = i;
+    }
   }
 
   const steps: ParcoursStep[] = path.map((key, i) => ({

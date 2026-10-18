@@ -1,3 +1,4 @@
+import type { AppRole } from "@/lib/roles";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
 export const STATUS_CATEGORY_ICONS = [
@@ -14,6 +15,45 @@ export type StatusCategoryIcon = (typeof STATUS_CATEGORY_ICONS)[number];
 
 export const TOTAL_CATEGORY_KEY = "TOTAL";
 
+export const JOURNEY_LIVRAISON_KEYS = [
+  "EN_ATTENTE",
+  "ENLEVES",
+  "AU_DEPOT",
+  "EXPEDIE_DESTINATION",
+  "ARRIVE_DESTINATION",
+  "AFFECTE_LIVREUR",
+  "EN_COURS",
+  "LIVRES",
+] as const;
+
+export const JOURNEY_RETOUR_KEYS = [
+  "LIVRAISON_ANNULEE",
+  "RETOUR_DEPOT",
+  "RETOUR_EXPEDITEURS",
+  "RETOUR_RECU",
+] as const;
+
+export const JOURNEY_STEP_KEYS = [
+  ...JOURNEY_LIVRAISON_KEYS,
+  ...JOURNEY_RETOUR_KEYS,
+] as const;
+
+export type JourneyStepKey = (typeof JOURNEY_STEP_KEYS)[number];
+
+export const JOURNEY_VISIBILITY_ROLES: AppRole[] = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "EXPERT_COMPTABLE",
+  "CHEF_AGENCE",
+  "SUPPORT",
+  "PICKUP",
+  "MAGASINIER",
+  "FINANCE",
+  "EXPEDITEUR",
+  "LIVREUR",
+  "CLIENT",
+];
+
 export type StatusCategory = {
   id: number;
   key: string;
@@ -22,6 +62,8 @@ export type StatusCategory = {
   icon: StatusCategoryIcon;
   sortOrder: number;
   isActive: boolean;
+  showInJourney: boolean;
+  visibleRoles: string[];
 };
 
 export type StatusCategoryInput = {
@@ -31,7 +73,24 @@ export type StatusCategoryInput = {
   icon: StatusCategoryIcon;
   sortOrder?: number;
   isActive?: boolean;
+  showInJourney?: boolean;
+  visibleRoles?: string[];
 };
+
+export function isJourneyStepKey(key: string): key is JourneyStepKey {
+  return (JOURNEY_STEP_KEYS as readonly string[]).includes(key);
+}
+
+export function journeyVisibleForRole(
+  category: Pick<StatusCategory, "showInJourney" | "visibleRoles">,
+  role?: string | null,
+): boolean {
+  if (category.showInJourney === false) return false;
+  const roles = category.visibleRoles ?? [];
+  if (!roles.length) return true;
+  if (!role) return false;
+  return roles.includes(role);
+}
 
 export const STATUS_CATEGORY_ICON_LABELS: Record<StatusCategoryIcon, string> = {
   package: "Colis",
@@ -53,7 +112,7 @@ export const CREATABLE_CATEGORY_KEYS: Array<{ key: string; label: string }> = [
 
 export const DEFAULT_STATUS_CATEGORIES: Omit<
   StatusCategory,
-  "id" | "isActive"
+  "id" | "isActive" | "showInJourney" | "visibleRoles"
 >[] = [
   {
     key: TOTAL_CATEGORY_KEY,
