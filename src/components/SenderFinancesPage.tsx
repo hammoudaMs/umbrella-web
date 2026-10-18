@@ -274,7 +274,7 @@ export function SenderFinancesPage() {
 
   return (
     <div className="w-full space-y-5 pb-8 lg:space-y-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-display text-xl font-extrabold tracking-tight text-ops-ink lg:text-3xl">
             {t("finances.title")}
@@ -285,11 +285,11 @@ export function SenderFinancesPage() {
               : t("finances.openStockHint", { count: counts.open })}
           </p>
         </div>
-        <div className="shrink-0 text-left sm:text-right">
+        <div className="shrink-0 text-right">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ops-ink/35">
             {t("finances.openStockValue")}
           </p>
-          <p className="font-display text-2xl font-extrabold tabular-nums leading-none text-ops-ink lg:text-3xl">
+          <p className="mt-0.5 whitespace-nowrap font-display text-xl font-extrabold tabular-nums leading-none text-ops-ink sm:text-2xl lg:text-3xl">
             {loading ? "…" : formatTnd(counts.openValue)}
           </p>
         </div>
@@ -305,8 +305,8 @@ export function SenderFinancesPage() {
         />
       ) : null}
 
-      <dl className="grid grid-cols-3 divide-x divide-ops-card rounded-xl border border-ops-card bg-ops-surface lg:grid-cols-3">
-        <div className="px-3 py-3 text-center lg:px-6 lg:py-4 lg:text-left">
+      <dl className="grid grid-cols-3 divide-x divide-ops-card rounded-xl border border-ops-card bg-ops-surface">
+        <div className="px-2 py-3 text-center sm:px-3 lg:px-6 lg:py-4 lg:text-left">
           <dt className="text-[10px] font-medium text-ops-ink/40 lg:text-xs">
             {t("finances.haveStock")}
           </dt>
@@ -314,7 +314,7 @@ export function SenderFinancesPage() {
             {loading ? "…" : counts.open}
           </dd>
         </div>
-        <div className="px-3 py-3 text-center lg:px-6 lg:py-4 lg:text-left">
+        <div className="px-2 py-3 text-center sm:px-3 lg:px-6 lg:py-4 lg:text-left">
           <dt className="text-[10px] font-medium text-ops-ink/40 lg:text-xs">
             {t("finances.notInStock")}
           </dt>
@@ -322,13 +322,13 @@ export function SenderFinancesPage() {
             {loading ? "…" : counts.closed}
           </dd>
         </div>
-        <div className="px-3 py-3 text-center lg:px-6 lg:py-4 lg:text-left">
+        <div className="min-w-0 px-2 py-3 text-center sm:px-3 lg:px-6 lg:py-4 lg:text-left">
           <dt className="text-[10px] font-medium text-ops-ink/40 lg:text-xs">
             {t("finances.margin")}
           </dt>
           <dd
             className={cn(
-              "mt-0.5 font-display text-lg font-bold tabular-nums lg:text-2xl",
+              "mt-0.5 whitespace-nowrap font-display text-base font-bold tabular-nums sm:text-lg lg:text-2xl",
               margin >= 0 ? "text-ops-ink" : "text-ops-accent",
             )}
           >

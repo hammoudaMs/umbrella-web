@@ -331,5 +331,5 @@ export function formatTnd(value: number | string | null | undefined): string {
   return `${toAmount(value).toLocaleString("fr-TN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 3,
-  })} TND`;
+  })}\u00A0TND`;
 }
