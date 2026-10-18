@@ -362,13 +362,13 @@ export function SenderFinancesPage() {
                 aria-selected={active}
                 onClick={() => setStage(f.key)}
                 className={cn(
-                  "flex min-h-[2.75rem] w-full flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-center transition lg:min-h-14 lg:flex-row lg:gap-2 lg:px-3",
+                  "flex min-h-[3.25rem] w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center transition sm:min-h-[3.5rem] sm:px-1.5 lg:min-h-14 lg:px-2",
                   active
                     ? "border-ops-accent bg-ops-accent text-white"
                     : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
                 )}
               >
-                <span className="max-w-full truncate text-[11px] font-semibold leading-tight lg:text-sm">
+                <span className="w-full whitespace-normal break-words text-[10px] font-semibold leading-snug sm:text-[11px] lg:text-sm">
                   {f.label}
                 </span>
                 <span
