@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  Fragment,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,7 +13,6 @@ import {
   Ban,
   ChevronRight,
   Copy,
-  FileSpreadsheet,
   FileText,
   MessageSquareWarning,
   Package,
@@ -21,6 +20,7 @@ import {
   Phone,
   Printer,
 } from "lucide-react";
+import { CopyableCode } from "@/components/CopyableCode";
 import { useConfirm, useToast } from "@/components/Feedback";
 import { ReturnVerificationActions } from "@/components/ReturnVerificationActions";
 import {
@@ -45,7 +45,6 @@ import {
 } from "@/lib/batch-print-memory";
 import { displayGovernorate } from "@/lib/normalize-text";
 import {
-  downloadParcelsExcel,
   openBordereauPdf,
   openBordereauxPdf,
   openParcelListPdf,
@@ -144,6 +143,7 @@ export function ParcelDetailTable({
   multiSelect = false,
   statusFilter = null,
   onParcelMutated,
+  onBatchSelectionChange,
 }: {
   rows: Parcel[];
   onEdit?: (row: Parcel) => void;
@@ -157,6 +157,11 @@ export function ParcelDetailTable({
   multiSelect?: boolean;
   statusFilter?: string | null;
   onParcelMutated?: () => void;
+  /** Notifies parent when batch selection changes (for status-card print, etc.). */
+  onBatchSelectionChange?: (state: {
+    count: number;
+    print: () => void;
+  }) => void;
 }) {
   const { session } = useAuth();
   const toast = useToast();
@@ -176,7 +181,6 @@ export function ParcelDetailTable({
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [groupByZone, setGroupByZone] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchPrintedIds, setBatchPrintedIds] = useState<Set<number>>(
     () => new Set(),
@@ -217,25 +221,9 @@ export function ParcelDetailTable({
       : [...rows];
     const dir = sortDir === "asc" ? 1 : -1;
     const read = PARCEL_SORT[sortKey];
-    list.sort((a, b) => {
-      if (groupByZone) {
-        const za = a.zone?.name?.trim() || "\uffff";
-        const zb = b.zone?.name?.trim() || "\uffff";
-        const byZone = za.localeCompare(zb, "fr", { sensitivity: "base" });
-        if (byZone !== 0) return byZone;
-      }
-      return dir * compareSortValues(read(a), read(b));
-    });
+    list.sort((a, b) => dir * compareSortValues(read(a), read(b)));
     return list;
-  }, [rows, query, sortKey, sortDir, groupByZone]);
-
-  function zoneKey(row: Parcel) {
-    return String(row.zone?.id ?? row.zoneId ?? "none");
-  }
-
-  function zoneLabel(row: Parcel) {
-    return row.zone?.name?.trim() || "Sans zone";
-  }
+  }, [rows, query, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -264,14 +252,35 @@ export function ParcelDetailTable({
     () => filtered.filter((r) => selectedIds.has(r.id)),
     [filtered, selectedIds],
   );
+
+  const printSelectedRef = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    if (!onBatchSelectionChange) return;
+    onBatchSelectionChange({
+      count: multiSelect ? selectedIds.size : 0,
+      print: () => {
+        void printSelectedRef.current();
+      },
+    });
+  }, [multiSelect, selectedIds, onBatchSelectionChange]);
   const allFilteredSelected =
     multiSelect &&
     filtered.length > 0 &&
     filtered.every((r) => selectedIds.has(r.id));
-  const pageAllSelected =
-    multiSelect &&
-    pageRows.length > 0 &&
-    pageRows.every((r) => selectedIds.has(r.id));
+  const someFilteredSelected =
+    multiSelect && selectedIds.size > 0 && !allFilteredSelected;
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const selectAllMobileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someFilteredSelected;
+    }
+    if (selectAllMobileRef.current) {
+      selectAllMobileRef.current.indeterminate = someFilteredSelected;
+    }
+  }, [someFilteredSelected]);
 
   function toggleRow(id: number) {
     setSelectedIds((prev) => {
@@ -288,18 +297,6 @@ export function ParcelDetailTable({
       return;
     }
     setSelectedIds(new Set(filtered.map((r) => r.id)));
-  }
-
-  function toggleSelectPage() {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (pageAllSelected) {
-        for (const row of pageRows) next.delete(row.id);
-      } else {
-        for (const row of pageRows) next.add(row.id);
-      }
-      return next;
-    });
   }
 
   function listRedirectPath() {
@@ -369,30 +366,16 @@ export function ParcelDetailTable({
     }
   }
 
+  printSelectedRef.current = () => {
+    void printSelected();
+  };
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(key);
       setSortDir(key === "createdAt" || key === "price" ? "desc" : "asc");
     }
-  }
-
-  function reportSlug() {
-    return (
-      reportTitle
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 40) || "colis"
-    );
-  }
-
-  function exportExcel() {
-    downloadParcelsExcel(filtered, `umbrella-${reportSlug()}`, {
-      includeMode: showModes,
-    });
   }
 
   function exportPdf() {
@@ -449,11 +432,32 @@ export function ParcelDetailTable({
     }
   }
 
-  const colSpan = (showPartyDetails ? 8 : 7) + (multiSelect ? 1 : 0);
+  const selectedCount = selectedIds.size;
+  const reprintInSelection = selectedRows.filter((r) =>
+    batchPrintedIds.has(r.id),
+  ).length;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
+        {multiSelect ? (
+          <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] font-medium text-ops-ink/55">
+            <input
+              ref={selectAllMobileRef}
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={toggleSelectAllFiltered}
+              className="h-3.5 w-3.5 rounded border-ops-card accent-ops-accent"
+              aria-label={`Tout sélectionner (${filtered.length})`}
+            />
+            <span className="whitespace-nowrap">
+              Tout
+              <span className="ms-1 tabular-nums text-ops-ink/35">
+                ({filtered.length})
+              </span>
+            </span>
+          </label>
+        ) : null}
         <SearchInput
           value={query}
           onChange={(value) => {
@@ -463,76 +467,13 @@ export function ParcelDetailTable({
           placeholder="Rechercher code, destinataire, ville…"
           className="min-w-0 flex-1"
         />
-        <div className="flex shrink-0 items-center gap-1">
-          <ToolbarIconBtn label="Excel" onClick={exportExcel}>
-            <FileSpreadsheet className="h-4 w-4" />
-          </ToolbarIconBtn>
-          <ToolbarIconBtn
-            label={role === "EXPEDITEUR" ? "Manifeste" : "PDF"}
-            onClick={exportPdf}
-          >
-            <FileText className="h-4 w-4" />
-          </ToolbarIconBtn>
-          <button
-            type="button"
-            onClick={() => setGroupByZone((v) => !v)}
-            className={cn(
-              "rounded-xl border px-2.5 py-2 text-[11px] font-semibold transition",
-              groupByZone
-                ? "border-ops-accent/40 bg-ops-accent/10 text-ops-accent"
-                : "border-ops-card text-ops-ink/45 hover:text-ops-ink",
-            )}
-          >
-            Zones
-          </button>
-        </div>
+        <ToolbarIconBtn
+          label={role === "EXPEDITEUR" ? "Manifeste" : "PDF"}
+          onClick={exportPdf}
+        >
+          <FileText className="h-4 w-4" />
+        </ToolbarIconBtn>
       </div>
-
-      {multiSelect ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-ops-card bg-ops-surface px-3 py-2.5">
-          <label className="inline-flex items-center gap-2 text-[12px] font-semibold text-ops-ink/70">
-            <input
-              type="checkbox"
-              checked={allFilteredSelected}
-              onChange={toggleSelectAllFiltered}
-              className="h-4 w-4 rounded border-ops-card accent-ops-accent"
-            />
-            Tout sélectionner ({filtered.length})
-          </label>
-          {selectedIds.size > 0 ? (
-            <>
-              <span className="text-[12px] text-ops-ink/40">
-                {selectedIds.size} sélectionné
-                {selectedIds.size > 1 ? "s" : ""}
-                {selectedRows.some((r) => batchPrintedIds.has(r.id))
-                  ? ` · ${selectedRows.filter((r) => batchPrintedIds.has(r.id)).length} déjà imprimés`
-                  : ""}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                icon={Printer}
-                onClick={() => void printSelected()}
-                className="ms-auto"
-              >
-                Imprimer ({selectedIds.size})
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setSelectedIds(new Set())}
-              >
-                Effacer
-              </Button>
-            </>
-          ) : (
-            <p className="ms-auto text-[11px] text-ops-ink/40">
-              Cochez puis imprimez — avertissement si réimpression
-            </p>
-          )}
-        </div>
-      ) : null}
 
       {loading ? (
         <div className="space-y-3 md:hidden">
@@ -569,11 +510,7 @@ export function ParcelDetailTable({
       ) : (
         <>
           <ul className="space-y-2 md:hidden">
-            {pageRows.map((row, index) => {
-              const showZone =
-                groupByZone &&
-                (index === 0 ||
-                  zoneKey(pageRows[index - 1]!) !== zoneKey(row));
+            {pageRows.map((row) => {
               const editable =
                 onEdit && (canEditRow ? canEditRow(row) : true);
               const code = row.code ?? `#${row.id}`;
@@ -595,18 +532,11 @@ export function ParcelDetailTable({
                 : "Signaler";
               const addressLine = [street, place].filter(Boolean).join(" · ");
               return (
-                <li key={row.id} className="space-y-1">
-                  {showZone ? (
-                    <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ops-ink/35">
-                      {zoneLabel(row)}
-                    </p>
-                  ) : null}
+                <li key={row.id}>
                   <article
                     className={cn(
                       "relative overflow-hidden rounded-xl border bg-ops-surface",
-                      selected
-                        ? "border-ops-accent/45 ring-1 ring-ops-accent/25"
-                        : "border-ops-card",
+                      selected ? "border-ops-ink/25 bg-ops-ink/[0.03]" : "border-ops-card",
                     )}
                   >
                     <span
@@ -615,75 +545,82 @@ export function ParcelDetailTable({
                       aria-hidden
                     />
                     <div className="space-y-2 py-2.5 pe-2.5 ps-3.5">
-                      <div className="flex items-start gap-2">
-                        {multiSelect ? (
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleRow(row.id)}
-                            className="mt-1 h-4 w-4 shrink-0 rounded border-ops-card accent-ops-accent"
-                            aria-label={`Sélectionner ${code}`}
+                      <div className="min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <CopyableCode
+                            code={row.code}
+                            fallback={`#${row.id}`}
+                            size="sm"
+                            className="min-w-0"
+                            textClassName="text-ops-ink/40"
+                            renderCode={
+                              href
+                                ? (display) => (
+                                    <Link
+                                      href={href}
+                                      className="truncate transition hover:text-ops-accent"
+                                    >
+                                      {display}
+                                    </Link>
+                                  )
+                                : undefined
+                            }
                           />
-                        ) : null}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            {href ? (
-                              <Link
-                                href={href}
-                                className="truncate font-mono text-[11px] font-medium text-ops-ink/40 transition hover:text-ops-accent"
-                              >
-                                {code}
-                              </Link>
-                            ) : (
-                              <p className="truncate font-mono text-[11px] font-medium text-ops-ink/40">
-                                {code}
-                              </p>
-                            )}
-                            <p className="shrink-0 whitespace-nowrap font-display text-[14px] font-bold tabular-nums text-ops-ink">
+                          <div className="flex shrink-0 items-center gap-2">
+                            <p className="whitespace-nowrap font-display text-[14px] font-bold tabular-nums text-ops-ink">
                               {formatTnd(row.price)}
                             </p>
-                          </div>
-                          <p className="mt-0.5 truncate text-[14px] font-semibold leading-snug text-ops-ink">
-                            {row.recipientName}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <span
-                              className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
-                              style={{
-                                color: tone,
-                                backgroundColor: `${tone}22`,
-                              }}
-                            >
-                              {meta?.label ?? row.status}
-                            </span>
-                            {row.phone ? (
-                              <a
-                                href={`tel:${row.phone}`}
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-ops-accent"
-                              >
-                                <Phone className="h-3 w-3" strokeWidth={2.25} />
-                                {row.phone}
-                              </a>
+                            {multiSelect ? (
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleRow(row.id)}
+                                className="h-4 w-4 rounded border-ops-card accent-ops-accent"
+                                aria-label={`Sélectionner ${code}`}
+                              />
                             ) : null}
                           </div>
-                          {addressLine ? (
-                            <p className="mt-1 truncate text-[11px] text-ops-ink/45">
-                              {addressLine}
-                            </p>
-                          ) : null}
-                          {showPartyDetails && row.sender?.name ? (
-                            <p className="mt-0.5 text-[10px] text-ops-ink/35">
-                              Exp. {row.sender.name}
-                              {row.driver?.name
-                                ? ` · Livreur ${row.driver.name}`
-                                : ""}
-                            </p>
-                          ) : row.driver?.name ? (
-                            <p className="mt-0.5 text-[10px] text-ops-ink/35">
-                              Livreur {row.driver.name}
-                            </p>
+                        </div>
+                        <p className="mt-0.5 truncate text-[14px] font-semibold leading-snug text-ops-ink">
+                          {row.recipientName}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span
+                            className="inline-flex max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                            style={{
+                              color: tone,
+                              backgroundColor: `${tone}22`,
+                            }}
+                          >
+                            {meta?.label ?? row.status}
+                          </span>
+                          {row.phone ? (
+                            <a
+                              href={`tel:${row.phone}`}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ops-accent"
+                            >
+                              <Phone className="h-3 w-3" strokeWidth={2.25} />
+                              {row.phone}
+                            </a>
                           ) : null}
                         </div>
+                        {addressLine ? (
+                          <p className="mt-1 truncate text-[11px] text-ops-ink/45">
+                            {addressLine}
+                          </p>
+                        ) : null}
+                        {showPartyDetails && row.sender?.name ? (
+                          <p className="mt-0.5 text-[10px] text-ops-ink/35">
+                            Exp. {row.sender.name}
+                            {row.driver?.name
+                              ? ` · Livreur ${row.driver.name}`
+                              : ""}
+                          </p>
+                        ) : row.driver?.name ? (
+                          <p className="mt-0.5 text-[10px] text-ops-ink/35">
+                            Livreur {row.driver.name}
+                          </p>
+                        ) : null}
                       </div>
 
                       {row.statusReason &&
@@ -774,11 +711,21 @@ export function ParcelDetailTable({
                   {multiSelect ? (
                     <th className={cn(thClass, "w-10 px-2 py-2")}>
                       <input
+                        ref={selectAllRef}
                         type="checkbox"
-                        checked={pageAllSelected}
-                        onChange={toggleSelectPage}
+                        checked={allFilteredSelected}
+                        onChange={toggleSelectAllFiltered}
                         className="h-4 w-4 rounded border-ops-card accent-ops-accent"
-                        aria-label="Sélectionner la page"
+                        title={
+                          allFilteredSelected
+                            ? "Tout désélectionner"
+                            : `Tout sélectionner (${filtered.length})`
+                        }
+                        aria-label={
+                          allFilteredSelected
+                            ? "Tout désélectionner"
+                            : `Tout sélectionner (${filtered.length})`
+                        }
                       />
                     </th>
                   ) : null}
@@ -827,14 +774,7 @@ export function ParcelDetailTable({
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((row, index) => {
-                  const showZone =
-                    groupByZone &&
-                    (index === 0 ||
-                      zoneKey(pageRows[index - 1]!) !== zoneKey(row));
-                  const zoneCount = filtered.filter(
-                    (r) => zoneKey(r) === zoneKey(row),
-                  ).length;
+                {pageRows.map((row) => {
                   const editable =
                     onEdit && (canEditRow ? canEditRow(row) : true);
                   const cancellable =
@@ -846,26 +786,13 @@ export function ParcelDetailTable({
                     ? "Ticket colis"
                     : "Signaler";
                   return (
-                    <Fragment key={row.id}>
-                      {showZone ? (
-                        <tr>
-                          <td
-                            colSpan={colSpan}
-                            className="bg-ops-page/70 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ops-ink/40"
-                          >
-                            {zoneLabel(row)}
-                            <span className="ml-1.5 font-medium normal-case tracking-normal text-ops-ink/28">
-                              {zoneCount}
-                            </span>
-                          </td>
-                        </tr>
-                      ) : null}
-                      <tr
-                        className={cn(
-                          trClass,
-                          selectedIds.has(row.id) && "bg-ops-accent/[0.04]",
-                        )}
-                      >
+                    <tr
+                      key={row.id}
+                      className={cn(
+                        trClass,
+                        selectedIds.has(row.id) && "bg-ops-ink/[0.04]",
+                      )}
+                    >
                         {multiSelect ? (
                           <td className={cn(tdClass, "px-2 py-2")}>
                             <input
@@ -885,18 +812,24 @@ export function ParcelDetailTable({
                         <td
                           className={cn(tdClass, "whitespace-nowrap px-3 py-2")}
                         >
-                          {detailBasePath ? (
-                            <Link
-                              href={`${detailBasePath}/${row.id}`}
-                              className="font-mono text-[12px] font-semibold text-ops-ink hover:text-ops-accent"
-                            >
-                              {row.code ?? `#${row.id}`}
-                            </Link>
-                          ) : (
-                            <span className="font-mono text-[12px] font-semibold text-ops-ink">
-                              {row.code ?? `#${row.id}`}
-                            </span>
-                          )}
+                          <CopyableCode
+                            code={row.code}
+                            fallback={`#${row.id}`}
+                            size="sm"
+                            textClassName="text-[12px] font-semibold"
+                            renderCode={
+                              detailBasePath
+                                ? (display) => (
+                                    <Link
+                                      href={`${detailBasePath}/${row.id}`}
+                                      className="hover:text-ops-accent"
+                                    >
+                                      {display}
+                                    </Link>
+                                  )
+                                : undefined
+                            }
+                          />
                         </td>
                         <td className={cn(tdClass, "min-w-[12rem] px-3 py-2")}>
                           <p className="truncate text-[13px] font-semibold text-ops-ink">
@@ -1033,7 +966,6 @@ export function ParcelDetailTable({
                           </div>
                         </td>
                       </tr>
-                    </Fragment>
                   );
                 })}
               </tbody>
@@ -1067,6 +999,44 @@ export function ParcelDetailTable({
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
               Suivant
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {multiSelect && selectedCount > 0 ? (
+        <div
+          className="pointer-events-none sticky bottom-3 z-20 flex justify-center px-1 pt-2"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="pointer-events-auto flex w-full max-w-lg items-center gap-3 rounded-2xl border border-ops-card bg-ops-surface/95 px-3 py-2.5 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md supports-[backdrop-filter]:bg-ops-surface/85">
+            <p className="min-w-0 flex-1 text-[13px] font-semibold text-ops-ink">
+              <span className="tabular-nums">{selectedCount}</span>
+              {" sélectionné"}
+              {selectedCount > 1 ? "s" : ""}
+              {reprintInSelection > 0 ? (
+                <span className="ms-1.5 font-normal text-ops-ink/40">
+                  · {reprintInSelection} déjà imprimé
+                  {reprintInSelection > 1 ? "s" : ""}
+                </span>
+              ) : null}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="shrink-0 px-2 text-[12px] font-medium text-ops-ink/45 transition hover:text-ops-ink"
+            >
+              Effacer
+            </button>
+            <Button
+              type="button"
+              size="sm"
+              icon={Printer}
+              onClick={() => void printSelected()}
+              className="shrink-0"
+            >
+              Imprimer
             </Button>
           </div>
         </div>

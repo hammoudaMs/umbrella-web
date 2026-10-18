@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { CheckCircle2, LifeBuoy, Plus, XCircle } from "lucide-react";
+import { CopyableCode } from "@/components/CopyableCode";
 import { errorText, useToast } from "@/components/Feedback";
 import { Modal } from "@/components/Modal";
 import {
@@ -409,8 +410,16 @@ export function TicketsManager({
                           ) : null}
                         </button>
                       </td>
-                      <td className={`${tdClass} font-mono text-xs text-ops-ink/50`}>
-                        {t.parcel?.code ?? "—"}
+                      <td className={`${tdClass} text-ops-ink/50`}>
+                        {t.parcel?.code ? (
+                          <CopyableCode
+                            code={t.parcel.code}
+                            size="sm"
+                            textClassName="text-ops-ink/50"
+                          />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className={tdClass}>
                         <Badge tone={STATUS_TONE[t.status]} dot>
@@ -552,7 +561,13 @@ export function TicketsManager({
                 {STATUS_LABEL[selected.status]}
               </Badge>
               {selected.parcel?.code ? (
-                <Badge tone="info">{selected.parcel.code}</Badge>
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5">
+                  <CopyableCode
+                    code={selected.parcel.code}
+                    size="sm"
+                    textClassName="text-sky-700 dark:text-sky-300"
+                  />
+                </span>
               ) : null}
             </div>
             {selected.requestedPrice != null ? (

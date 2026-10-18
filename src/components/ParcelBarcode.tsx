@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { cn } from "@/lib/cn";
 import { code128Svg } from "@/lib/code128";
 
 type Props = {
@@ -9,10 +10,11 @@ type Props = {
   height?: number;
 };
 
+/** Always on white — dark UI would make Code128 unreadable to scanners/cameras. */
 export function ParcelBarcode({ code, className, height = 64 }: Props) {
   const svg = useMemo(() => {
     try {
-      return code128Svg(code, { height, moduleWidth: 1.5, includeText: true });
+      return code128Svg(code, { height, moduleWidth: 1.6, includeText: true });
     } catch {
       return null;
     }
@@ -20,13 +22,18 @@ export function ParcelBarcode({ code, className, height = 64 }: Props) {
 
   if (!svg) {
     return (
-      <p className="text-center font-mono text-sm text-ops-ink/60">{code}</p>
+      <p className="rounded-lg bg-white px-3 py-2 text-center font-mono text-sm text-black">
+        {code}
+      </p>
     );
   }
 
   return (
     <div
-      className={className}
+      className={cn(
+        "inline-flex justify-center rounded-lg bg-white px-4 py-3",
+        className,
+      )}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

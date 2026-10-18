@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { LayoutList, MapPinned, RefreshCw, Truck } from "lucide-react";
+import { CopyableCode } from "@/components/CopyableCode";
 import { errorText, useToast } from "@/components/Feedback";
 import { PlacesSmartView } from "@/components/PlacesSmartView";
 import {
@@ -306,7 +307,12 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
           renderItem={(p) => (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ops-card bg-ops-surface px-4 py-3">
               <div className="min-w-0">
-                <p className="font-mono text-xs font-semibold text-ops-accent keep-ltr">{p.code}</p>
+                <CopyableCode
+                  code={p.code}
+                  fallback={`#${p.id}`}
+                  size="sm"
+                  textClassName="text-ops-accent"
+                />
                 <p className="font-semibold text-ops-ink">{p.recipientName}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <StatusBadge status={p.status} />
@@ -356,9 +362,12 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                 {visible.map((p) => (
                   <li key={p.id} className="space-y-3 px-4 py-3.5">
                     <div className="min-w-0">
-                      <p className="font-mono text-[13px] font-bold text-ops-ink keep-ltr">
-                        {p.code ?? `#${p.id}`}
-                      </p>
+                      <CopyableCode
+                        code={p.code}
+                        fallback={`#${p.id}`}
+                        size="sm"
+                        textClassName="text-[13px] font-bold"
+                      />
                       {showModes ? (
                         <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ops-ink/40">
                           {p.mode === "INTERNAL" ? "Umbrella" : "Navex"}
@@ -421,9 +430,11 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                   {visible.map((p) => (
                     <tr key={p.id} className={trClass}>
                       <td className={tdClass}>
-                        <p className="font-mono text-xs font-semibold text-ops-ink keep-ltr">
-                          {p.code}
-                        </p>
+                        <CopyableCode
+                          code={p.code}
+                          fallback={`#${p.id}`}
+                          size="sm"
+                        />
                         {showModes ? (
                           <p className="text-[10px] font-semibold uppercase text-ops-ink/50">
                             {p.mode}

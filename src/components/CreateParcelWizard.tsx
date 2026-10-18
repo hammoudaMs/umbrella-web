@@ -29,6 +29,7 @@ import {
   AddressLocationFields,
   type AddressLocationValue,
 } from "@/components/AddressLocationFields";
+import { CopyableCode } from "@/components/CopyableCode";
 import { errorText, useToast } from "@/components/Feedback";
 import { Modal } from "@/components/Modal";
 import { ZoneField } from "@/components/ZoneField";
@@ -714,9 +715,14 @@ export function CreateParcelWizard({
             <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
               <CheckCircle2 className="h-8 w-8" strokeWidth={2} />
             </span>
-            <p className="mt-3 font-display text-2xl font-extrabold tracking-tight text-ops-ink">
-              {codeLabel}
-            </p>
+            <div className="mt-3 flex justify-center">
+              <CopyableCode
+                code={createdParcel.code}
+                fallback={codeLabel}
+                size="lg"
+                textClassName="font-display text-2xl font-extrabold tracking-tight"
+              />
+            </div>
             <p className="mt-1 text-sm text-ops-ink/50">
               {statusLabelFn(createdParcel.status)}
             </p>

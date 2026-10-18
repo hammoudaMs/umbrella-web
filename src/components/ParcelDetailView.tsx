@@ -23,6 +23,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import { ClientParcelEditor } from "@/components/ClientParcelEditor";
+import { CopyableCode } from "@/components/CopyableCode";
 import { ReturnVerificationActions } from "@/components/ReturnVerificationActions";
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
 import {
@@ -304,7 +305,15 @@ export function ParcelDetailView({
     <div className="space-y-6">
       <PageHeader
         eyebrow="Colis"
-        title={`\u200E${parcel.code ?? `#${parcel.id}`}`}
+        title={
+          <CopyableCode
+            code={parcel.code}
+            fallback={`#${parcel.id}`}
+            size="lg"
+            className="justify-center md:justify-start"
+            textClassName="font-display text-2xl font-extrabold tracking-tight md:text-3xl"
+          />
+        }
         description={`${parcel.recipientName} · ${parcel.city}, ${parcel.governorate}`}
         actions={
           <>

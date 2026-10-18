@@ -24,6 +24,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { CopyableCode } from "@/components/CopyableCode";
 import { HeroVanScene } from "@/components/landing/HeroVanScene";
 import { useT } from "@/i18n/locale-context";
 import { cn } from "@/lib/cn";
@@ -1445,12 +1446,17 @@ export function OpsDashboardBoard({
               {recentSorted.slice(0, 12).map((p) => (
                 <tr key={p.id} className="hover:bg-ops-ink/[0.03]">
                   <td className="py-3.5 pr-3">
-                    <Link
-                      href={`${basePath}/parcels/${p.id}`}
-                      className="font-mono text-[14px] font-bold text-ops-accent"
-                    >
-                      {p.code ?? `#${p.id}`}
-                    </Link>
+                    <CopyableCode
+                      code={p.code}
+                      fallback={`#${p.id}`}
+                      size="sm"
+                      textClassName="text-[14px] font-bold text-ops-accent"
+                      renderCode={(display) => (
+                        <Link href={`${basePath}/parcels/${p.id}`}>
+                          {display}
+                        </Link>
+                      )}
+                    />
                   </td>
                   <td className="py-3.5 pr-3 text-[14px] font-medium text-ops-ink/90">
                     {p.recipientName}
@@ -1486,34 +1492,46 @@ export function OpsDashboardBoard({
             </li>
           ) : (
             recent.slice(0, 12).map((p) => (
-              <li key={p.id}>
+              <li
+                key={p.id}
+                className="flex min-h-[4.75rem] items-center justify-between gap-3 py-3.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <CopyableCode
+                    code={p.code}
+                    fallback={`#${p.id}`}
+                    size="sm"
+                    textClassName="text-[15px] font-bold text-ops-accent"
+                    renderCode={(display) => (
+                      <Link href={`${basePath}/parcels/${p.id}`}>
+                        {display}
+                      </Link>
+                    )}
+                  />
+                  <Link
+                    href={`${basePath}/parcels/${p.id}`}
+                    className="mt-0.5 block truncate text-[15px] font-semibold"
+                  >
+                    {p.recipientName}
+                  </Link>
+                  <p className="mt-0.5 text-[13px] text-ops-ink/45">
+                    {p.city} · {formatShortDate(p.createdAt)}
+                  </p>
+                </div>
                 <Link
                   href={`${basePath}/parcels/${p.id}`}
-                  className="flex min-h-[4.75rem] items-center justify-between gap-3 py-3.5"
+                  className="flex shrink-0 items-center gap-2 text-right"
                 >
-                  <div className="min-w-0">
-                    <p className="font-mono text-[15px] font-bold text-ops-accent">
-                      {p.code ?? `#${p.id}`}
-                    </p>
-                    <p className="mt-0.5 truncate text-[15px] font-semibold">
-                      {p.recipientName}
-                    </p>
-                    <p className="mt-0.5 text-[13px] text-ops-ink/45">
-                      {p.city} · {formatShortDate(p.createdAt)}
+                  <div>
+                    <StatusPill status={p.status} />
+                    <p className="mt-1.5 text-[15px] font-extrabold tabular-nums">
+                      {formatPrice(p.price)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2 text-right">
-                    <div>
-                      <StatusPill status={p.status} />
-                      <p className="mt-1.5 text-[15px] font-extrabold tabular-nums">
-                        {formatPrice(p.price)}
-                      </p>
-                    </div>
-                    <ChevronRight
-                      className="h-5 w-5 text-ops-ink/30"
-                      aria-hidden
-                    />
-                  </div>
+                  <ChevronRight
+                    className="h-5 w-5 text-ops-ink/30"
+                    aria-hidden
+                  />
                 </Link>
               </li>
             ))

@@ -11,6 +11,7 @@ import {
   Wallet,
   XCircle,
 } from "lucide-react";
+import { CopyableCode } from "@/components/CopyableCode";
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
 import { Modal } from "@/components/Modal";
 import {
@@ -428,9 +429,12 @@ export function PaymentsManager({
                           onChange={() => toggle(p.id)}
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block font-mono text-xs font-semibold text-ops-ink">
-                            {p.code ?? `#${p.id}`}
-                          </span>
+                          <CopyableCode
+                            code={p.code}
+                            fallback={`#${p.id}`}
+                            size="sm"
+                            className="block"
+                          />
                           <span className="mt-0.5 block truncate text-xs text-ops-ink/45">
                             {p.recipientName} · {p.city}
                           </span>
@@ -546,12 +550,13 @@ export function PaymentsManager({
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {p.items.map((i) => (
-                        <span
+                        <CopyableCode
                           key={`${p.id}-${i.parcel.id}`}
-                          className="keep-ltr rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-ops-ink"
-                        >
-                          {i.parcel.code ?? `#${i.parcel.id}`}
-                        </span>
+                          code={i.parcel.code}
+                          fallback={`#${i.parcel.id}`}
+                          size="sm"
+                          className="rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5"
+                        />
                       ))}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -680,12 +685,13 @@ export function PaymentsManager({
                         <td className={tdClass}>
                           <div className="flex flex-wrap gap-1">
                             {p.items.map((i) => (
-                              <span
+                              <CopyableCode
                                 key={`${p.id}-${i.parcel.id}`}
-                                className="keep-ltr rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-ops-ink"
-                              >
-                                {i.parcel.code ?? `#${i.parcel.id}`}
-                              </span>
+                                code={i.parcel.code}
+                                fallback={`#${i.parcel.id}`}
+                                size="sm"
+                                className="rounded-md bg-ops-ink/[0.06] px-1.5 py-0.5"
+                              />
                             ))}
                           </div>
                         </td>
@@ -854,9 +860,11 @@ function PaymentDetailModal({
                   key={item.parcel.id}
                   className="flex items-center justify-between gap-3 rounded-xl border border-ops-card px-3 py-2 text-sm"
                 >
-                  <span className="font-mono font-semibold text-ops-ink">
-                    {item.parcel.code ?? `#${item.parcel.id}`}
-                  </span>
+                  <CopyableCode
+                    code={item.parcel.code}
+                    fallback={`#${item.parcel.id}`}
+                    size="sm"
+                  />
                   <span className="tabular-nums font-semibold text-ops-ink">
                     {formatTnd(item.amount)}
                   </span>

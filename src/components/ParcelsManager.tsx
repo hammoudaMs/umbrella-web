@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Printer } from "lucide-react";
 import { CreateParcelWizard } from "@/components/CreateParcelWizard";
 import { errorText, useConfirm, useToast } from "@/components/Feedback";
 import { Modal } from "@/components/Modal";
@@ -97,6 +98,16 @@ export function ParcelsManager({
   const [editing, setEditing] = useState<Parcel | null>(null);
   const [saving, setSaving] = useState(false);
   const [editZoneName, setEditZoneName] = useState<string | null>(null);
+  const [batchSelectedCount, setBatchSelectedCount] = useState(0);
+  const batchPrintRef = useRef<() => void>(() => undefined);
+
+  const onBatchSelectionChange = useCallback(
+    (state: { count: number; print: () => void }) => {
+      setBatchSelectedCount(state.count);
+      batchPrintRef.current = state.print;
+    },
+    [],
+  );
 
   function canEditRow(row: Parcel) {
     if (!canEdit) return false;
@@ -246,7 +257,33 @@ export function ParcelsManager({
         <ErrorBanner message={error} onRetry={() => void reload()} />
       ) : null}
 
-      {!returnsOnly ? <StatusFilterBar parcels={parcels} /> : null}
+      {!returnsOnly ? (
+        <StatusFilterBar
+          parcels={parcels}
+          trailing={
+            role === "EXPEDITEUR" ? (
+              <button
+                type="button"
+                disabled={batchSelectedCount === 0}
+                onClick={() => batchPrintRef.current()}
+                title={
+                  batchSelectedCount > 0
+                    ? `Imprimer (${batchSelectedCount})`
+                    : "Sélectionnez au moins un colis"
+                }
+                aria-label={
+                  batchSelectedCount > 0
+                    ? `Imprimer ${batchSelectedCount} colis`
+                    : "Imprimer — aucun colis sélectionné"
+                }
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-ops-card bg-ops-surface text-ops-ink/70 transition hover:border-ops-ink/25 hover:text-ops-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-ops-card disabled:hover:text-ops-ink/70"
+              >
+                <Printer className="h-4 w-4" strokeWidth={2.25} />
+              </button>
+            ) : null
+          }
+        />
+      ) : null}
 
       <ParcelDetailTable
         rows={filtered}
@@ -254,9 +291,14 @@ export function ParcelsManager({
         detailBasePath={detailBasePath}
         reportTitle={heading || title}
         showPartyDetails={showPartyDetails}
-        multiSelect={role === "EXPEDITEUR" && statusFilter === "EN_ATTENTE"}
+        multiSelect={role === "EXPEDITEUR" && !returnsOnly}
         statusFilter={statusFilter}
         onParcelMutated={() => void reload()}
+        onBatchSelectionChange={
+          role === "EXPEDITEUR" && !returnsOnly
+            ? onBatchSelectionChange
+            : undefined
+        }
         canEditRow={canEdit ? canEditRow : undefined}
         canCancelRow={canDelete ? canCancelRow : undefined}
         onCancel={canDelete ? (row) => void onDelete(row) : undefined}

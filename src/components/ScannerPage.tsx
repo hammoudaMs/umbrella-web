@@ -17,6 +17,7 @@ import {
   Camera,
 } from "lucide-react";
 import { CameraBarcodePanel } from "@/components/CameraBarcodePanel";
+import { CopyableCode } from "@/components/CopyableCode";
 import { DashboardHero } from "@/components/DashboardHero";
 import { ParcelBarcode } from "@/components/ParcelBarcode";
 import { TypeaheadSelect } from "@/components/TypeaheadSelect";
@@ -1459,12 +1460,11 @@ export function ScannerPage({ role }: { role: AppRole }) {
               <Package className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <p
-                className="keep-ltr font-mono text-lg font-bold text-ops-ink"
-                dir="ltr"
-              >
-                {parcel.code}
-              </p>
+              <CopyableCode
+                code={parcel.code}
+                fallback={`#${parcel.id}`}
+                size="lg"
+              />
               <p className="truncate text-sm text-ops-ink/70">
                 {parcel.recipientName} · {parcel.phone}
               </p>

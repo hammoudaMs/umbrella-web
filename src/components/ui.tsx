@@ -19,8 +19,8 @@ export function PageHeader({
   actions,
   eyebrow,
 }: {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
   eyebrow?: string;
 }) {
@@ -36,9 +36,9 @@ export function PageHeader({
           {title}
         </h1>
         {description ? (
-          <p className="mx-auto mt-1 max-w-2xl text-sm text-ops-ink/50 md:mx-0">
+          <div className="mx-auto mt-1 max-w-2xl text-sm text-ops-ink/50 md:mx-0">
             {description}
-          </p>
+          </div>
         ) : null}
       </div>
       {actions ? (

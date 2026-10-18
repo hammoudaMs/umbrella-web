@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ComponentType,
+  type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -98,7 +99,14 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
+export function StatusFilterBar({
+  parcels,
+  trailing,
+}: {
+  parcels: Countable[];
+  /** Top-right of the status card (e.g. batch print). */
+  trailing?: ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -188,59 +196,60 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
 
   return (
     <div className="space-y-1.5">
-      <div ref={rootRef} className="relative max-w-md">
-        <button
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={listId}
-          onClick={() => setOpen((v) => !v)}
-          className={cn(
-            "flex w-full min-h-11 items-center gap-2.5 rounded-xl border bg-ops-surface px-3 py-2 text-left transition",
-            "border-ops-card hover:border-ops-ink/20",
-            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
-            open && "border-ops-accent/40 ring-1 ring-ops-accent/20",
-          )}
-        >
-          <span
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-            style={{
-              backgroundColor: hexToRgba(selected.color, 0.2),
-              color: selected.color,
-            }}
-            aria-hidden
-          >
-            <SelectedIcon className="h-4 w-4" strokeWidth={2.25} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-ops-ink/40">
-              Statut
-            </span>
-            <span className="mt-0.5 flex items-center gap-2">
-              <span className="truncate text-[13px] font-semibold text-ops-ink">
-                {selected.label}
-              </span>
-              <span className="shrink-0 font-display text-[13px] font-bold tabular-nums text-ops-ink/45">
-                {selected.count}
-              </span>
-            </span>
-          </span>
-          <ChevronDown
+      <div className="flex max-w-md items-start gap-2">
+        <div ref={rootRef} className="relative min-w-0 flex-1">
+          <button
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-controls={listId}
+            onClick={() => setOpen((v) => !v)}
             className={cn(
-              "h-4 w-4 shrink-0 text-ops-ink/40 transition",
-              open && "rotate-180",
+              "flex w-full min-h-11 items-center gap-2.5 rounded-xl border bg-ops-surface px-3 py-2 text-left transition",
+              "border-ops-card hover:border-ops-ink/20",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+              open && "border-ops-accent/40 ring-1 ring-ops-accent/20",
             )}
-            aria-hidden
-          />
-        </button>
-
-        {open ? (
-          <ul
-            id={listId}
-            role="listbox"
-            aria-label="Filtrer par statut"
-            className="absolute z-30 mt-1.5 max-h-72 w-full overflow-y-auto rounded-xl border border-ops-card bg-ops-surface py-1 shadow-lg"
           >
+            <span
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: hexToRgba(selected.color, 0.2),
+                color: selected.color,
+              }}
+              aria-hidden
+            >
+              <SelectedIcon className="h-4 w-4" strokeWidth={2.25} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-ops-ink/40">
+                Statut
+              </span>
+              <span className="mt-0.5 flex items-center gap-2">
+                <span className="truncate text-[13px] font-semibold text-ops-ink">
+                  {selected.label}
+                </span>
+                <span className="shrink-0 font-display text-[13px] font-bold tabular-nums text-ops-ink/45">
+                  {selected.count}
+                </span>
+              </span>
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 shrink-0 text-ops-ink/40 transition",
+                open && "rotate-180",
+              )}
+              aria-hidden
+            />
+          </button>
+
+          {open ? (
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label="Filtrer par statut"
+              className="absolute z-30 mt-1.5 max-h-72 w-full overflow-y-auto rounded-xl border border-ops-card bg-ops-surface py-1 shadow-lg"
+            >
             {options.map((opt) => {
               const active = opt.key === selected.key;
               const Icon = opt.Icon;
@@ -286,6 +295,10 @@ export function StatusFilterBar({ parcels }: { parcels: Countable[] }) {
               );
             })}
           </ul>
+          ) : null}
+        </div>
+        {trailing ? (
+          <div className="flex h-11 shrink-0 items-center">{trailing}</div>
         ) : null}
       </div>
 

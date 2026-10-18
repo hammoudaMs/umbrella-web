@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
 import { formatTnd, type Parcel } from "@/lib/domain";
+import { CopyableCode } from "@/components/CopyableCode";
 import { ParcelBarcode } from "@/components/ParcelBarcode";
 import { openBordereauPdf } from "@/lib/parcel-report";
 import { PORTAL_BY_ROLE } from "@/lib/roles";
@@ -49,7 +50,15 @@ function BordereauInner() {
     <div className="space-y-6">
       <PageHeader
         title={t("misc.bordereau.title")}
-        description={parcel.code ?? `#${parcel.id}`}
+        description={
+          <CopyableCode
+            code={parcel.code}
+            fallback={`#${parcel.id}`}
+            size="sm"
+            className="justify-center md:justify-start"
+            textClassName="text-ops-ink/50"
+          />
+        }
         actions={
           <Button
             icon={Printer}
@@ -73,7 +82,14 @@ function BordereauInner() {
           <p className="mt-1 text-xs uppercase tracking-[0.2em] text-ops-ink/50">Bordereau de livraison</p>
         </div>
         <div className="mt-6 space-y-4 text-sm">
-          <p className="font-mono text-lg font-bold tracking-wide text-ops-ink">{parcel.code}</p>
+          <div className="flex justify-center print:block">
+            <CopyableCode
+              code={parcel.code}
+              fallback={`#${parcel.id}`}
+              size="lg"
+              className="justify-center"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-[11px] uppercase text-ops-ink/50">Destinataire</p>
@@ -98,8 +114,18 @@ function BordereauInner() {
             <p className="text-ops-ink">{parcel.designation ?? parcel.notes ?? "—"}</p>
           </div>
           {parcel.code ? (
-            <div className="mt-8 flex justify-center [&_svg]:max-w-full">
-              <ParcelBarcode code={parcel.code} height={72} />
+            <div className="mt-8 flex flex-col items-center gap-2">
+              <div className="w-full max-w-sm [&_svg]:max-w-full">
+                <ParcelBarcode
+                  code={parcel.code}
+                  height={80}
+                  className="w-full"
+                />
+              </div>
+              <p className="text-center text-[11px] text-ops-ink/45 print:hidden">
+                Scannez avec la douchette ou Scanner (caméra) — ou Imprimer /
+                PDF pour un bordereau papier.
+              </p>
             </div>
           ) : (
             <p className="mt-8 text-center text-sm text-ops-ink/50">
