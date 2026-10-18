@@ -279,11 +279,6 @@ export function SenderFinancesPage() {
           <h1 className="font-display text-xl font-extrabold tracking-tight text-ops-ink lg:text-3xl">
             {t("finances.title")}
           </h1>
-          <p className="mt-0.5 text-xs text-ops-ink/40 lg:text-sm">
-            {loading
-              ? "…"
-              : t("finances.openStockHint", { count: counts.open })}
-          </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ops-ink/35">
