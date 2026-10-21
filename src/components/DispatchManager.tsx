@@ -25,13 +25,13 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import type { Driver, Parcel, Zone } from "@/lib/domain";
-import { canSeeDeliveryMode } from "@/lib/roles";
 import { useStatusLabel } from "@/i18n/hooks";
 import {
   requiresComment,
   selectableStatuses,
 } from "@/lib/parcel-transitions";
-import type { AppRole } from "@/lib/roles";
+import { canDispatch } from "@/lib/role-capabilities";
+import { canSeeDeliveryMode, type AppRole } from "@/lib/roles";
 import { SortableTh, useTableSort } from "@/lib/table-sort";
 import { useApi, useApiQuery } from "@/lib/use-api";
 
@@ -60,11 +60,12 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
     [statusLabelFn],
   );
   const showModes = canSeeDeliveryMode(session?.user.role);
+  const canAssign = staffMode && canDispatch(session?.user.role);
   const request = useApi();
   const toast = useToast();
   const parcelsQuery = useApiQuery<Parcel[]>("/parcels");
-  const driversQuery = useApiQuery<Driver[]>(staffMode ? "/users/livreurs" : null);
-  const zonesQuery = useApiQuery<Zone[]>(staffMode ? "/zones" : null);
+  const driversQuery = useApiQuery<Driver[]>(canAssign ? "/users/livreurs" : null);
+  const zonesQuery = useApiQuery<Zone[]>(canAssign ? "/zones" : null);
   const [syncing, setSyncing] = useState(false);
   const [byPlaces, setByPlaces] = useState(false);
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -269,7 +270,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {staffMode ? (
+        {canAssign ? (
           <StatCard label="À assigner" value={stats.unassigned} hint="Colis INTERNAL sans livreur" icon={Truck} tone="brand" />
         ) : null}
         <StatCard label="En circulation" value={stats.active} icon={MapPinned} tone="gold" />
@@ -282,7 +283,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
           title="Dispatch par lieux"
           description="Assignez un livreur à tout un quartier ou une ville d’un clic"
           renderPlaceActions={
-            staffMode
+            canAssign
               ? (_label, items) => (
                   <select
                     aria-label="Assigner tout le lieu"
@@ -320,7 +321,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {staffMode ? driverSelect(p) : null}
+                {canAssign ? driverSelect(p) : null}
                 {statusSelect(p)}
               </div>
             </div>
@@ -336,7 +337,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                 onChange={setFilter}
                 options={[
                   { value: "ALL", label: "Tous", count: parcels.length },
-                  ...(staffMode
+                  ...(canAssign
                     ? [{ value: "UNASSIGNED" as const, label: "À assigner", count: stats.unassigned }]
                     : []),
                   { value: "ACTIVE", label: "En circulation", count: stats.active },
@@ -384,7 +385,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                       </div>
                     </div>
                     <div className="grid gap-2">
-                      {staffMode ? driverSelect(p, "h-10 w-full text-sm") : null}
+                      {canAssign ? driverSelect(p, "h-10 w-full text-sm") : null}
                       {statusSelect(p, "h-10 w-full text-sm")}
                     </div>
                   </li>
@@ -414,7 +415,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                       sortDir={sortDir}
                       onSort={toggleSort}
                     />
-                    {staffMode ? (
+                    {canAssign ? (
                       <SortableTh
                         label="Livreur"
                         column="driver"
@@ -450,7 +451,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
                       <td className={tdClass}>
                         <StatusBadge status={p.status} />
                       </td>
-                      {staffMode ? (
+                      {canAssign ? (
                         <td className={tdClass}>{driverSelect(p)}</td>
                       ) : null}
                       <td className={tdClass}>{statusSelect(p)}</td>
@@ -463,7 +464,7 @@ export function DispatchManager({ staffMode = false }: { staffMode?: boolean }) 
         </TableCard>
       )}
 
-      {staffMode && activeZones.length > 0 ? (
+      {canAssign && activeZones.length > 0 ? (
         <p className="text-xs text-ops-ink/50">
           Zones actives : {activeZones.map((z) => z.name).join(", ")}
         </p>

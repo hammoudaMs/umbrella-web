@@ -21,100 +21,154 @@ export type StatusKey =
   | "RETOUR_RECU"
   | "SAISIE_DOUANE";
 
-/** Tracking labels aligned to Umbrella delivery lifecycles. */
+/**
+ * `label` = statut affiché (badge / liste).
+ * `trackingLabel` = étape détaillée (suivi public / parcours).
+ */
 export const STATUS_META: Record<
   StatusKey,
-  { label: string; color: string; ink?: string; emoji: string }
+  {
+    label: string;
+    trackingLabel: string;
+    color: string;
+    ink?: string;
+    emoji: string;
+  }
 > = {
-  NON_SERIEUX: { label: "Non sérieux", color: "#FF6B6B", emoji: "🚫" },
+  NON_SERIEUX: {
+    label: "Non sérieux",
+    trackingLabel: "Non sérieux",
+    color: "#FF6B6B",
+    emoji: "🚫",
+  },
   EN_ATTENTE: {
     label: "En attente de collecte",
+    trackingLabel: "En attente de collecte",
     color: "#FFDBA4",
     ink: "#5C4816",
     emoji: "⏳",
   },
   A_ENLEVER: {
     label: "En attente de collecte",
+    trackingLabel: "En attente de collecte",
     color: "#ECC5FB",
     ink: "#4A2A5C",
     emoji: "📦",
   },
   ENLEVES: {
     label: "Colis récupéré",
+    trackingLabel: "Colis récupéré",
     color: "#ECC5FB",
     ink: "#4A2A5C",
     emoji: "📤",
   },
   AU_DEPOT: {
-    label: "Arrivé au dépôt",
+    label: "Au dépôt",
+    trackingLabel: "Arrivé au dépôt",
     color: "#95BDFF",
     ink: "#1A3A6B",
     emoji: "🏭",
   },
   EXPEDIE_DESTINATION: {
-    label: "Expédié vers le dépôt de destination",
+    label: "Au dépôt",
+    trackingLabel: "Sortie du dépôt",
     color: "#7DD3FC",
     ink: "#0C4A6E",
     emoji: "🚛",
   },
   ARRIVE_DESTINATION: {
-    label: "Arrivé au dépôt de destination",
+    label: "Au dépôt",
+    trackingLabel: "Arrivé au dépôt de destination",
     color: "#38BDF8",
     ink: "#0C4A6E",
     emoji: "🏬",
   },
   AFFECTE_LIVREUR: {
-    label: "Affecté à un livreur",
-    color: "#A78BFA",
-    ink: "#3B0764",
-    emoji: "👤",
+    label: "En cours de livraison",
+    trackingLabel: "Affecté à un livreur",
+    color: "#90C8AC",
+    ink: "#1A4A35",
+    emoji: "🚚",
   },
   RETOUR_DEPOT: {
     label: "Retour en agence",
+    trackingLabel: "Retour en agence",
     color: "#FDBA74",
     ink: "#7C2D12",
     emoji: "↩️",
   },
   EN_COURS: {
     label: "En cours de livraison",
+    trackingLabel: "En cours de livraison",
     color: "#90C8AC",
     ink: "#1A4A35",
     emoji: "🚚",
   },
   A_VERIFIER: {
     label: "À vérifier",
+    trackingLabel: "À vérifier",
     color: "#FF8AAE",
     ink: "#6B1A35",
     emoji: "🔍",
   },
-  LIVRES: { label: "Livré", color: "#3FA796", emoji: "✅" },
-  LIVRES_PAYES: { label: "Livré payé", color: "#3FA796", emoji: "💰" },
-  ECHANGES: { label: "Échanges", color: "#8FA60B", emoji: "🔄" },
-  REMBOURSES: { label: "Remboursés", color: "#8FA60B", emoji: "💸" },
+  LIVRES: {
+    label: "Livré",
+    trackingLabel: "Livré",
+    color: "#3FA796",
+    emoji: "✅",
+  },
+  LIVRES_PAYES: {
+    label: "Livré payé",
+    trackingLabel: "Livré payé",
+    color: "#3FA796",
+    emoji: "💰",
+  },
+  ECHANGES: {
+    label: "Échanges",
+    trackingLabel: "Échanges",
+    color: "#8FA60B",
+    emoji: "🔄",
+  },
+  REMBOURSES: {
+    label: "Remboursés",
+    trackingLabel: "Remboursés",
+    color: "#8FA60B",
+    emoji: "💸",
+  },
   LIVRAISON_ANNULEE: {
     label: "Livraison annulée",
+    trackingLabel: "Livraison annulée",
     color: "#FB7185",
     ink: "#881337",
     emoji: "⛔",
   },
-  RETOUR_DEFINITIF: { label: "Retour définitif", color: "#FF4A4A", emoji: "❌" },
+  RETOUR_DEFINITIF: {
+    label: "Retour définitif",
+    trackingLabel: "Retour définitif",
+    color: "#FF4A4A",
+    emoji: "❌",
+  },
   RETOUR_INTER_AGENCE: {
     label: "Retour inter-agence",
+    trackingLabel: "Retour inter-agence",
     color: "#FF4A4A",
     emoji: "🔁",
   },
   RETOUR_EXPEDITEURS: {
     label: "En transit vers l’expéditeur",
+    trackingLabel: "En transit vers l’expéditeur",
     color: "#F87171",
     emoji: "📬",
   },
   RETOUR_RECU: {
     label: "Retour livré à l’expéditeur",
+    trackingLabel: "Retour livré à l’expéditeur",
     color: "#EF4444",
     emoji: "📥",
   },
   SAISIE_DOUANE: {
     label: "Saisie par la Douane",
+    trackingLabel: "Saisie par la Douane",
     color: "#4C4C4C",
     emoji: "🛃",
   },

@@ -47,6 +47,8 @@ type AnalyticsPayload = {
   };
   soldes?: {
     disponible: number;
+    indisponible?: number;
+    holdHours?: number;
     enDemande: number;
     aVerser: number;
     enPipeline?: number;
@@ -381,15 +383,15 @@ export function AnalyticsPage({
           color: SERIES_COLORS.disponible,
         },
         {
-          key: "enDemande",
-          label: "En demande",
-          value: soldes.enDemande,
+          key: "indisponible",
+          label: "Indisponible",
+          value: soldes.indisponible ?? soldes.enDemande,
           color: SERIES_COLORS.enDemande,
         },
         {
-          key: "aVerser",
-          label: "À verser",
-          value: soldes.aVerser,
+          key: "pipeline",
+          label: "En pipeline",
+          value: soldes.enPipeline ?? soldes.aVerser,
           color: SERIES_COLORS.aVerser,
         },
         {
@@ -425,7 +427,7 @@ export function AnalyticsPage({
             className="inline-flex items-center gap-1.5 rounded-full bg-ops-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-ops-accent-soft"
           >
             <Wallet className="h-4 w-4" />
-            Demander un versement
+            Mes versements
           </Link>
         ) : null}
       </header>
@@ -500,15 +502,17 @@ export function AnalyticsPage({
                 accent: true,
               },
               {
-                label: "En demande",
-                value: formatMoney(soldes.enDemande),
+                label: "Indisponible",
+                value: formatMoney(
+                  soldes.indisponible ?? soldes.enDemande,
+                ),
               },
               {
-                label: "À verser",
-                value: formatMoney(soldes.aVerser),
+                label: "En pipeline",
+                value: formatMoney(soldes.enPipeline ?? soldes.aVerser),
               },
               {
-                label: "Déjà versé",
+                label: "Versé",
                 value: formatMoney(soldes.verse),
               },
             ].map((card) => (

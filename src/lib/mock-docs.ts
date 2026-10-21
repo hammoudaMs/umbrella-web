@@ -6,6 +6,7 @@ export type MockDocKind =
   | "receipt"
   | "facture"
   | "decharge"
+  | "decharge_versement"
   | "cin"
   | "bordereau"
   | "bordereau_externe";
@@ -26,7 +27,7 @@ export const MOCK_DOC_TEMPLATES: readonly MockDocTemplate[] = [
     file: "receipt-versement.pdf",
     url: "/mock-docs/receipt-versement.pdf",
     title: "Reçu de versement livreur",
-    description: "Photo / PDF du reçu COD remis au magasinier ou finance.",
+    description: "Formulaire A4 simple + logo — remise COD magasinier / finance.",
     where: "Livreur → Versement · Magasinier → Clôture · Caisses COD",
   },
   {
@@ -34,7 +35,7 @@ export const MOCK_DOC_TEMPLATES: readonly MockDocTemplate[] = [
     file: "facture-expert.pdf",
     url: "/mock-docs/facture-expert.pdf",
     title: "Facture expert (caisse dépense)",
-    description: "Scan PDF obligatoire pour déduire une facture du fond de caisse.",
+    description: "Justificatif simple pour déduire une facture du fond de caisse.",
     where: "Expert comptable → Caisses dépense (sortie)",
   },
   {
@@ -42,15 +43,24 @@ export const MOCK_DOC_TEMPLATES: readonly MockDocTemplate[] = [
     file: "decharge-pickup.pdf",
     url: "/mock-docs/decharge-pickup.pdf",
     title: "Décharge pickup cachetée",
-    description: "Décharge tamponnée avant clôture du manifeste d’enlèvement.",
+    description: "Décharge d’enlèvement — tampon expéditeur + signature pickup.",
     where: "Pickup → Manifestes",
+  },
+  {
+    kind: "decharge_versement",
+    file: "decharge-versement.pdf",
+    url: "/mock-docs/decharge-versement.pdf",
+    title: "Décharge de versement (expéditeur)",
+    description:
+      "Papier signé « j’ai reçu mon versement » — upload après validation staff.",
+    where: "Expéditeur → Paiements (attente décharge)",
   },
   {
     kind: "cin",
     file: "cin-pickup.pdf",
     url: "/mock-docs/cin-pickup.pdf",
     title: "CIN pickupeur / chauffeur",
-    description: "Pièce d’identité jointe avec la décharge.",
+    description: "Pièce d’identité jointe avec la décharge pickup.",
     where: "Pickup → Manifestes",
   },
   {
@@ -58,7 +68,7 @@ export const MOCK_DOC_TEMPLATES: readonly MockDocTemplate[] = [
     file: "bordereau-colis.pdf",
     url: "/mock-docs/bordereau-colis.pdf",
     title: "Bordereau colis Umbrella",
-    description: "Étiquette / bordereau PDF lié au colis.",
+    description: "Bordereau A4 simple avec logo — lié au colis.",
     where: "Colis · Bordereau admin",
   },
   {
@@ -66,7 +76,7 @@ export const MOCK_DOC_TEMPLATES: readonly MockDocTemplate[] = [
     file: "bordereau-externe.pdf",
     url: "/mock-docs/bordereau-externe.pdf",
     title: "Bordereau partenaire externe",
-    description: "PDF partenaire (Navex / EXTERNAL).",
+    description: "Référence PDF partenaire (Navex / EXTERNAL).",
     where: "Colis mode EXTERNAL",
   },
 ] as const;

@@ -1,4 +1,5 @@
 import type { AddressLocationValue } from "@/components/AddressLocationFields";
+import { apiFetch } from "@/lib/api";
 import type { DeliveryMode } from "@/lib/domain";
 import type { DeliveryWindowId } from "@/lib/delivery-windows";
 
@@ -30,6 +31,11 @@ export type CreateParcelDraft = {
   zoneName: string | null;
   price: string;
   unitSalePrice: string;
+  /** Depuis le stock vs nouveau produit saisi à la volée. */
+  productSource: "stock" | "new";
+  /** Selected SenderStockItem id (string for form draft). */
+  stockItemId: string;
+  unitCost: string;
   deliveryFee: string;
   returnFee: string;
   articleCount: string;
@@ -48,17 +54,29 @@ function storageKey(userId: number) {
   return `${KEY_PREFIX}.${userId}`;
 }
 
+function isCreateParcelDraft(value: unknown): value is CreateParcelDraft {
+  if (typeof value !== "object" || value == null) return false;
+  const stepIndex = (value as { stepIndex?: unknown }).stepIndex;
+  return typeof stepIndex === "number" && Number.isFinite(stepIndex);
+}
+
 export function loadCreateParcelDraft(
   userId: number | undefined | null,
 ): CreateParcelDraft | null {
   if (!userId || typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(storageKey(userId));
+    const key = storageKey(userId);
+    let raw = window.localStorage.getItem(key);
+    if (!raw) {
+      raw = window.sessionStorage.getItem(key);
+      if (raw) {
+        window.localStorage.setItem(key, raw);
+        window.sessionStorage.removeItem(key);
+      }
+    }
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as CreateParcelDraft;
-    if (typeof parsed !== "object" || parsed == null) return null;
-    if (typeof parsed.stepIndex !== "number") return null;
-    return parsed;
+    const parsed: unknown = JSON.parse(raw);
+    return isCreateParcelDraft(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -70,21 +88,76 @@ export function saveCreateParcelDraft(
 ): void {
   if (!userId || typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(storageKey(userId), JSON.stringify(draft));
+    window.localStorage.setItem(storageKey(userId), JSON.stringify(draft));
   } catch {
     // ignore quota / private mode
   }
 }
 
-export function clearCreateParcelDraft(
+export function clearCreateParcelDraftLocal(
   userId: number | undefined | null,
 ): void {
   if (!userId || typeof window === "undefined") return;
   try {
-    window.sessionStorage.removeItem(storageKey(userId));
+    window.localStorage.removeItem(storageKey(userId));
   } catch {
     // ignore
   }
+}
+
+export async function fetchCreateParcelDraft(
+  token: string | undefined | null,
+): Promise<CreateParcelDraft | null> {
+  if (!token) return null;
+  try {
+    const res = await apiFetch<{ draft: unknown }>(
+      "/users/me/create-parcel-draft",
+      { token, silent: true },
+    );
+    return isCreateParcelDraft(res?.draft) ? res.draft : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function persistCreateParcelDraft(
+  token: string | undefined | null,
+  draft: CreateParcelDraft,
+): Promise<void> {
+  if (!token) return;
+  try {
+    await apiFetch("/users/me/create-parcel-draft", {
+      method: "PUT",
+      token,
+      silent: true,
+      body: JSON.stringify({ draft }),
+    });
+  } catch {
+    // best-effort — local cache remains
+  }
+}
+
+export async function clearCreateParcelDraftRemote(
+  token: string | undefined | null,
+): Promise<void> {
+  if (!token) return;
+  try {
+    await apiFetch("/users/me/create-parcel-draft", {
+      method: "DELETE",
+      token,
+      silent: true,
+    });
+  } catch {
+    // ignore
+  }
+}
+
+export function clearCreateParcelDraftAll(
+  userId: number | undefined | null,
+  token: string | undefined | null,
+): void {
+  clearCreateParcelDraftLocal(userId);
+  void clearCreateParcelDraftRemote(token);
 }
 
 export function markCreateParcelReopen(): void {

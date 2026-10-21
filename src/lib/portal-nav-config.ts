@@ -1,7 +1,6 @@
 import {
   Banknote,
   BarChart3,
-  Box,
   Boxes,
   Building2,
   ClipboardList,
@@ -11,6 +10,7 @@ import {
   MessageSquare,
   Package,
   Palette,
+  Plus,
   RefreshCw,
   Route,
   Scale,
@@ -22,6 +22,7 @@ import {
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
+import { canUseMessages } from "@/lib/role-capabilities";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 
 export type PortalNavDef = {
@@ -53,11 +54,15 @@ function withMessages(base: string, items: PortalNavDef[]): PortalNavDef[] {
   return [...items, msg];
 }
 
+function maybeMessages(role: AppRole, base: string, items: PortalNavDef[]) {
+  return canUseMessages(role) ? withMessages(base, items) : items;
+}
+
 export function portalNavFor(role: AppRole): PortalNavDef[] {
   const base = PORTAL_BY_ROLE[role];
 
   if (role === "LIVREUR") {
-    return withMessages(base, [
+    return maybeMessages(role, base, [
       { href: base, labelKey: "nav.today", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
@@ -78,7 +83,7 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
   }
 
   if (role === "CLIENT") {
-    return withMessages(base, [
+    return maybeMessages(role, base, [
       { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
@@ -92,7 +97,6 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: Route,
         mobilePrimary: true,
       },
-      { href: `${base}/scanner`, labelKey: "nav.scanner", icon: ScanLine },
       {
         href: `${base}/tickets`,
         labelKey: "nav.tickets",
@@ -104,7 +108,7 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
   }
 
   if (role === "EXPEDITEUR") {
-    return withMessages(base, [
+    return maybeMessages(role, base, [
       { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
@@ -115,24 +119,26 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
       {
         href: `${base}/nouveau`,
         labelKey: "nav.nouveau",
-        icon: Box,
+        icon: Plus,
         mobilePrimary: true,
         action: "create-parcel",
       },
       {
-        href: `${base}/scanner`,
-        labelKey: "nav.scanner",
-        icon: ScanLine,
+        href: `${base}/zones`,
+        labelKey: "nav.zones",
+        icon: MapPin,
         mobilePrimary: true,
       },
       {
-        href: `${base}/finances`,
+        href: `${base}/payments`,
+        labelKey: "nav.payments",
+        icon: CreditCard,
+      },
+      {
+        href: `${base}/stock`,
         labelKey: "nav.stock",
         icon: Boxes,
-        mobilePrimary: true,
       },
-      { href: `${base}/analytics`, labelKey: "nav.analytics", icon: BarChart3 },
-      { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
       {
         href: `${base}/tickets`,
         labelKey: "nav.tickets",
@@ -148,7 +154,7 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
   }
 
   if (role === "SUPPORT") {
-    return withMessages(base, [
+    return maybeMessages(role, base, [
       { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/retours`,
@@ -168,19 +174,14 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: ScanLine,
         mobilePrimary: true,
       },
+      { href: `${base}/parcels`, labelKey: "nav.parcels", icon: Package },
       { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
 
   if (role === "PICKUP") {
-    return withMessages(base, [
+    return [
       { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
-      {
-        href: `${base}/parcels`,
-        labelKey: "nav.parcels",
-        icon: Package,
-        mobilePrimary: true,
-      },
       {
         href: `${base}/manifestes`,
         labelKey: "nav.manifestes",
@@ -193,12 +194,18 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: ScanLine,
         mobilePrimary: true,
       },
+      {
+        href: `${base}/parcels`,
+        labelKey: "nav.parcels",
+        icon: Package,
+        mobilePrimary: true,
+      },
       { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
-    ]);
+    ];
   }
 
   if (role === "MAGASINIER") {
-    return withMessages(base, [
+    return [
       { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
       {
         href: `${base}/parcels`,
@@ -212,30 +219,30 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: Scale,
         mobilePrimary: true,
       },
-      { href: `${base}/retours`, labelKey: "nav.retours", icon: RefreshCw },
       {
         href: `${base}/scanner`,
         labelKey: "nav.scanner",
         icon: ScanLine,
         mobilePrimary: true,
       },
+      { href: `${base}/retours`, labelKey: "nav.retours", icon: RefreshCw },
       { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
-    ]);
+    ];
   }
 
   if (role === "CHEF_AGENCE") {
-    return withMessages(base, [
+    return maybeMessages(role, base, [
       { href: base, labelKey: "nav.home", icon: Home, mobilePrimary: true },
+      {
+        href: `${base}/dispatch`,
+        labelKey: "nav.dispatch",
+        icon: Truck,
+        mobilePrimary: true,
+      },
       {
         href: `${base}/parcels`,
         labelKey: "nav.parcels",
         icon: Package,
-        mobilePrimary: true,
-      },
-      {
-        href: `${base}/caisses`,
-        labelKey: "nav.caisses",
-        icon: Banknote,
         mobilePrimary: true,
       },
       {
@@ -244,9 +251,9 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: CreditCard,
         mobilePrimary: true,
       },
-      { href: `${base}/scanner`, labelKey: "nav.scanner", icon: ScanLine },
-      { href: `${base}/dispatch`, labelKey: "nav.dispatch", icon: Truck },
+      { href: `${base}/caisses`, labelKey: "nav.caisses", icon: Banknote },
       { href: `${base}/analytics`, labelKey: "nav.analytics", icon: BarChart3 },
+      { href: `${base}/scanner`, labelKey: "nav.scanner", icon: ScanLine },
       { href: `${base}/settings`, labelKey: "nav.settings", icon: Settings },
     ]);
   }
@@ -266,7 +273,12 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         icon: CreditCard,
         mobilePrimary: true,
       },
-      { href: `${base}/payments`, labelKey: "nav.payments", icon: CreditCard },
+      {
+        href: `${base}/payments`,
+        labelKey: "nav.payments",
+        icon: CreditCard,
+        mobilePrimary: true,
+      },
       {
         href: `${base}/modeles-pdf`,
         labelKey: "nav.mockDocs",
@@ -286,14 +298,14 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
         mobilePrimary: true,
       },
       {
-        href: `${base}/caissier`,
-        labelKey: "nav.caissier",
+        href: `${base}/payments`,
+        labelKey: "nav.payments",
         icon: CreditCard,
         mobilePrimary: true,
       },
       {
-        href: `${base}/payments`,
-        labelKey: "nav.payments",
+        href: `${base}/caissier`,
+        labelKey: "nav.caissier",
         icon: CreditCard,
         mobilePrimary: true,
       },
@@ -328,26 +340,28 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
   ];
 
   if (role === "SUPER_ADMIN") {
-    items.push({
-      href: `${base}/agencies`,
-      labelKey: "nav.agencies",
-      icon: Building2,
-    });
-    items.push({
-      href: `${base}/routes`,
-      labelKey: "nav.routes",
-      icon: Route,
-    });
-    items.push({
-      href: `${base}/categories`,
-      labelKey: "nav.categories",
-      icon: Palette,
-    });
-    items.push({
-      href: `${base}/modeles-pdf`,
-      labelKey: "nav.mockDocs",
-      icon: ClipboardList,
-    });
+    items.push(
+      {
+        href: `${base}/agencies`,
+        labelKey: "nav.agencies",
+        icon: Building2,
+      },
+      {
+        href: `${base}/routes`,
+        labelKey: "nav.routes",
+        icon: Route,
+      },
+      {
+        href: `${base}/categories`,
+        labelKey: "nav.categories",
+        icon: Palette,
+      },
+      {
+        href: `${base}/modeles-pdf`,
+        labelKey: "nav.mockDocs",
+        icon: ClipboardList,
+      },
+    );
   }
 
   if (role === "ADMIN") {
@@ -363,7 +377,7 @@ export function portalNavFor(role: AppRole): PortalNavDef[] {
     labelKey: "nav.settings",
     icon: Settings,
   });
-  return withMessages(base, items);
+  return maybeMessages(role, base, items);
 }
 
 export function portalSidebarLinks(role: AppRole): PortalNavDef[] {

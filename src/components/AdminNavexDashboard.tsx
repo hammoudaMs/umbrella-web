@@ -22,6 +22,7 @@ import type { StatusCategory } from "@/lib/status-categories";
 import { isStatusCategoryIcon } from "@/lib/status-categories";
 import { LayoutDashboard } from "lucide-react";
 import { toAmount, type Payment, type Ticket } from "@/lib/domain";
+import { summarizeSenderFinance } from "@/lib/sender-finance";
 
 gsap.registerPlugin(useGSAP);
 
@@ -31,6 +32,7 @@ const PAYMENT_ACTIVE: Payment["status"][] = [
   "VALIDE_CHEF",
   "VALIDE_EXPERT",
   "APPROUVE",
+  "AWAITING_DECHARGE",
   "PAYE",
 ];
 
@@ -54,8 +56,11 @@ type AnalyticsPayload = {
   };
   soldes?: {
     disponible: number;
+    indisponible?: number;
+    holdHours?: number;
     enDemande: number;
     aVerser: number;
+    enPipeline?: number;
     verse: number;
   };
   last7Days: Array<{
@@ -77,7 +82,10 @@ type RecentParcel = {
   status: string;
   mode: "EXTERNAL" | "INTERNAL";
   price: string | number;
+  deliveryFee?: string | number | null;
+  unitSalePrice?: string | number | null;
   createdAt: string;
+  deliveredAt?: string | null;
 };
 
 const emptyAnalytics = (): AnalyticsPayload => ({
@@ -204,36 +212,43 @@ export function AdminNavexDashboard({
         .flatMap((p) => p.items.map((i) => i.parcel.id)),
     );
     const eligible = parcels.filter(
-      (p) =>
-        (p.status === "LIVRES" || p.status === "LIVRES_PAYES") &&
-        !requested.has(p.id),
+      (p) => p.status === "LIVRES" && !requested.has(p.id),
     );
-    const eligibleAmount = eligible.reduce((s, p) => s + toAmount(p.price), 0);
     const returnCount = parcels.filter((p) =>
       ["RETOUR_DEPOT", "RETOUR_EXPEDITEURS", "RETOUR_RECU"].includes(p.status),
     ).length;
     const openAll = tickets.filter((t) => t.status === "EN_COURS");
-    const enDemande = payments
-      .filter((p) => {
-        const s = normalizePaymentStatus(p.status);
-        return (
-          s === "EN_DEMANDE" ||
-          s === "VALIDE_FINANCE" ||
-          s === "VALIDE_CHEF" ||
-          s === "VALIDE_EXPERT"
-        );
-      })
-      .reduce((s, p) => s + toAmount(p.amount), 0);
+    const holdHours = analytics?.soldes?.holdHours;
+    const finance = summarizeSenderFinance(
+      parcels.map((p) => ({
+        id: p.id,
+        price: toAmount(p.price),
+        unitSalePrice:
+          p.unitSalePrice == null ? null : toAmount(p.unitSalePrice),
+        deliveryFee: toAmount(p.deliveryFee ?? 0),
+        status: p.status,
+        deliveredAt: p.deliveredAt ?? null,
+      })),
+      payments.map((p) => ({
+        amount: toAmount(p.amount),
+        status: normalizePaymentStatus(p.status),
+        items: p.items.map((i) => ({
+          parcelId: i.parcel.id,
+          amount: toAmount(i.amount),
+        })),
+      })),
+      holdHours != null ? { holdHours } : {},
+    );
     return {
       eligibleCount: eligible.length,
-      eligibleAmount,
+      eligibleAmount: finance.disponible,
       returnCount,
       openTicketCount: openAll.length,
       openTickets: openAll.slice(0, 5),
-      disponible: analytics?.soldes?.disponible ?? 0,
-      enDemande,
+      disponible: finance.disponible,
+      enDemande: finance.indisponible,
     };
-  }, [analytics?.soldes?.disponible, isExpediteurHome, parcels, payments, tickets]);
+  }, [isExpediteurHome, parcels, payments, tickets, analytics?.soldes?.holdHours]);
 
   const statusKpis = useMemo(() => {
     const countsByStatus = countByParcelStatus(parcels);
@@ -316,7 +331,23 @@ export function AdminNavexDashboard({
           home={home}
           kpis={statusKpis}
           revenue={kpis.revenue}
-          solde={home.showSolde ? (analytics?.soldes?.disponible ?? 0) : null}
+          soldes={
+            home.showSolde
+              ? isExpediteurHome && expediteurAside
+                ? {
+                    disponible: expediteurAside.disponible,
+                    indisponible: expediteurAside.enDemande,
+                  }
+                : {
+                    disponible: analytics?.soldes?.disponible ?? 0,
+                    indisponible:
+                      analytics?.soldes?.indisponible ??
+                      analytics?.soldes?.enPipeline ??
+                      (analytics?.soldes?.enDemande ?? 0) +
+                        (analytics?.soldes?.aVerser ?? 0),
+                  }
+              : null
+          }
           inProgress={kpis.inProgress}
           delivered={kpis.delivered}
           deliveryRate={kpis.deliveryRate}

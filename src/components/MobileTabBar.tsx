@@ -33,7 +33,13 @@ export function MobileTabBar({ role }: { role: AppRole }) {
       ? false
       : isTabActive(pathname, item.href, homeHref),
   );
-  const cols = more.length > 0 ? primary.length + 1 : primary.length;
+
+  const createIndex = primary.findIndex((tab) => tab.action === "create-parcel");
+  const createTab = createIndex >= 0 ? primary[createIndex] : null;
+  const leftTabs =
+    createIndex >= 0 ? primary.slice(0, createIndex) : primary;
+  const rightTabs =
+    createIndex >= 0 ? primary.slice(createIndex + 1) : [];
 
   useEffect(() => {
     setMoreOpen(false);
@@ -86,81 +92,160 @@ export function MobileTabBar({ role }: { role: AppRole }) {
         aria-label={t("landing.navAria")}
         className="fixed inset-x-0 bottom-0 z-50 border-t border-ops-ink/10 bg-ops-page/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
       >
-        <ul
-          className="mx-auto grid max-w-lg px-1 pt-1"
-          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-        >
-          {primary.map((tab) => {
-            const Icon = tab.icon;
-            const isCreate = tab.action === "create-parcel";
-            const active = isCreate
-              ? Boolean(createParcel?.createOpen)
-              : isTabActive(pathname, tab.href, homeHref);
-            const className = cn(
-              "relative flex min-h-[3.75rem] w-full flex-col items-center justify-center gap-1 px-1 py-2.5 text-[11px] font-semibold tracking-wide transition",
-              active
-                ? "text-ops-accent"
-                : "text-ops-ink/55 hover:text-ops-ink/85",
-            );
-            const content = (
-              <>
-                <Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} />
-                <span className="truncate">{t(tab.labelKey)}</span>
-                {active ? (
-                  <span
-                    className="absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent"
-                    aria-hidden
-                  />
-                ) : null}
-              </>
-            );
-            return (
-              <li key={tab.href}>
-                {isCreate ? (
-                  <button
-                    type="button"
-                    className={className}
-                    onClick={() => createParcel?.openCreateParcel()}
-                  >
-                    {content}
-                  </button>
-                ) : (
-                  <Link href={tab.href} className={className}>
-                    {content}
-                  </Link>
-                )}
-              </li>
-            );
-          })}
-          {more.length > 0 ? (
-            <li>
-              <button
-                type="button"
-                onClick={() => setMoreOpen((v) => !v)}
-                className={cn(
-                  "relative flex min-h-[3.75rem] w-full flex-col items-center justify-center gap-1 px-1 py-2.5 text-[11px] font-semibold tracking-wide transition",
-                  moreOpen || moreActive
-                    ? "text-ops-accent"
-                    : "text-ops-ink/55 hover:text-ops-ink/85",
-                )}
-              >
-                <MoreHorizontal
-                  className="h-6 w-6"
-                  strokeWidth={moreOpen || moreActive ? 2.4 : 2}
-                />
-                <span>{t("mobile.more")}</span>
-                {moreOpen || moreActive ? (
-                  <span
-                    className="absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent"
-                    aria-hidden
-                  />
-                ) : null}
-              </button>
-            </li>
+        <div className="mx-auto flex max-w-lg items-end px-1 pt-1">
+          <ul className="flex min-w-0 flex-1 items-stretch justify-evenly">
+            {leftTabs.map((tab) => (
+              <TabLink
+                key={tab.href}
+                tab={tab}
+                active={
+                  !moreOpen && isTabActive(pathname, tab.href, homeHref)
+                }
+              />
+            ))}
+          </ul>
+
+          {createTab ? (
+            <CreateFab
+              tab={createTab}
+              active={!moreOpen && Boolean(createParcel?.createOpen)}
+              onClick={() => createParcel?.openCreateParcel()}
+            />
           ) : null}
-        </ul>
+
+          <ul className="flex min-w-0 flex-1 items-stretch justify-evenly">
+            {rightTabs.map((tab) => (
+              <TabLink
+                key={tab.href}
+                tab={tab}
+                active={
+                  !moreOpen && isTabActive(pathname, tab.href, homeHref)
+                }
+              />
+            ))}
+            {more.length > 0 ? (
+              <li className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen((v) => !v)}
+                  aria-expanded={moreOpen}
+                  className={cn(
+                    "relative flex min-h-[3.75rem] w-full flex-col items-center justify-center gap-1 px-0.5 py-2.5 text-[11px] font-semibold tracking-wide",
+                    "transition-[color,transform] duration-300 ease-out",
+                    moreOpen || moreActive
+                      ? "-translate-y-1.5 text-ops-accent"
+                      : "translate-y-0 text-ops-ink/55 hover:text-ops-ink/85",
+                  )}
+                >
+                  <MoreHorizontal
+                    className={cn(
+                      "h-6 w-6 transition-transform duration-300 ease-out",
+                      moreOpen || moreActive ? "scale-110" : "scale-100",
+                    )}
+                    strokeWidth={moreOpen || moreActive ? 2.4 : 2}
+                  />
+                  <span className="truncate">{t("mobile.more")}</span>
+                  <span
+                    className={cn(
+                      "absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent transition-all duration-300 ease-out",
+                      moreOpen || moreActive
+                        ? "scale-x-100 opacity-100"
+                        : "scale-x-0 opacity-0",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+              </li>
+            ) : null}
+          </ul>
+        </div>
       </nav>
     </>
+  );
+}
+
+function CreateFab({
+  tab,
+  active,
+  onClick,
+}: {
+  tab: PortalNavDef;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const t = useT();
+  const Icon = tab.icon;
+  return (
+    <div className="relative z-10 flex w-[4.5rem] shrink-0 flex-col items-center justify-end pb-0.5">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "relative -mt-5 flex flex-col items-center justify-center gap-0.5",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ops-accent/50",
+        )}
+        aria-label={t(tab.labelKey)}
+        aria-pressed={active}
+      >
+        <span
+          className={cn(
+            "inline-flex h-12 w-12 items-center justify-center rounded-full border-4 border-ops-page bg-ops-accent text-white shadow-[0_6px_16px_-4px_rgba(0,0,0,0.45)] transition hover:brightness-110",
+            active && "brightness-110",
+          )}
+        >
+          <Icon className="h-6 w-6" strokeWidth={2.6} />
+        </span>
+        <span
+          className={cn(
+            "max-w-full truncate text-[10px] font-semibold tracking-wide",
+            active ? "text-ops-accent" : "text-ops-ink/55",
+          )}
+        >
+          {t(tab.labelKey)}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function TabLink({
+  tab,
+  active,
+}: {
+  tab: PortalNavDef;
+  active: boolean;
+}) {
+  const t = useT();
+  const Icon = tab.icon;
+  return (
+    <li className="min-w-0 flex-1">
+      <Link
+        href={tab.href}
+        className={cn(
+          "relative flex min-h-[3.75rem] w-full flex-col items-center justify-center gap-1 px-0.5 py-2.5 text-[11px] font-semibold tracking-wide",
+          "transition-[color,transform] duration-300 ease-out",
+          active
+            ? "-translate-y-1.5 text-ops-accent"
+            : "translate-y-0 text-ops-ink/55 hover:text-ops-ink/85",
+        )}
+      >
+        <Icon
+          className={cn(
+            "h-6 w-6 transition-transform duration-300 ease-out",
+            active ? "scale-110" : "scale-100",
+          )}
+          strokeWidth={active ? 2.4 : 2}
+        />
+        <span className="truncate">{t(tab.labelKey)}</span>
+        <span
+          className={cn(
+            "absolute bottom-0 h-0.5 w-8 rounded-full bg-ops-accent transition-all duration-300 ease-out",
+            active ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0",
+          )}
+          aria-hidden
+        />
+      </Link>
+    </li>
   );
 }
 

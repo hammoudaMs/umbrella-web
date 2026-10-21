@@ -13,7 +13,7 @@ export function MockDocsGallery() {
     <div className="space-y-6">
       <PageHeader
         title="Modèles PDF (demo)"
-        description="Formats mock pour reçu, facture, décharge, CIN et bordereaux — ouvrez-les pour valider le rendu."
+        description="Formulaires A4 simples (style Word) avec logo Umbrella — reçu, factures, décharges, CIN et bordereaux."
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

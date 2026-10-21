@@ -368,7 +368,9 @@ export function ParcelDetailView({
             ) : (
               <Badge tone="warning">Non dispatché</Badge>
             )}
-            {parcel.tryProduct ? <Badge tone="warning">Essai produit</Badge> : null}
+            {parcel.tryProduct || parcel.allowOpen ? (
+              <Badge tone="warning">Ouvrir avant de payer</Badge>
+            ) : null}
             {parcel.isFragile ? <Badge tone="danger">Fragile</Badge> : null}
             {parcel.isExchange ? <Badge tone="gold">Échange</Badge> : null}
           </div>

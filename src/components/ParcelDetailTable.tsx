@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { CopyableCode } from "@/components/CopyableCode";
 import { useConfirm, useToast } from "@/components/Feedback";
+import { Modal } from "@/components/Modal";
 import { ReturnVerificationActions } from "@/components/ReturnVerificationActions";
 import {
   Button,
@@ -185,6 +186,7 @@ export function ParcelDetailTable({
   const [batchPrintedIds, setBatchPrintedIds] = useState<Set<number>>(
     () => new Set(),
   );
+  const [printChoiceOpen, setPrintChoiceOpen] = useState(false);
   const userId = session?.user.id;
 
   useEffect(() => {
@@ -264,14 +266,23 @@ export function ParcelDetailTable({
       },
     });
   }, [multiSelect, selectedIds, onBatchSelectionChange]);
-  const allFilteredSelected =
+  const canSelectAll =
     multiSelect &&
+    (statusFilter === "EN_ATTENTE" || statusFilter === "A_ENLEVER");
+  const allFilteredSelected =
+    canSelectAll &&
     filtered.length > 0 &&
     filtered.every((r) => selectedIds.has(r.id));
   const someFilteredSelected =
-    multiSelect && selectedIds.size > 0 && !allFilteredSelected;
+    canSelectAll && selectedIds.size > 0 && !allFilteredSelected;
   const selectAllRef = useRef<HTMLInputElement>(null);
   const selectAllMobileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!canSelectAll && selectedIds.size > 0) {
+      setSelectedIds(new Set());
+    }
+  }, [canSelectAll, selectedIds.size]);
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -292,6 +303,7 @@ export function ParcelDetailTable({
   }
 
   function toggleSelectAllFiltered() {
+    if (!canSelectAll) return;
     if (allFilteredSelected) {
       setSelectedIds(new Set());
       return;
@@ -304,55 +316,31 @@ export function ParcelDetailTable({
     return detailBasePath.split("?")[0] || detailBasePath;
   }
 
-  async function printSelected() {
-    if (selectedRows.length === 0) {
-      toast.error("Sélectionnez au moins un colis");
+  const neverPrintedRows = useMemo(
+    () => selectedRows.filter((r) => !batchPrintedIds.has(r.id)),
+    [selectedRows, batchPrintedIds],
+  );
+  const alreadyPrintedRows = useMemo(
+    () => selectedRows.filter((r) => batchPrintedIds.has(r.id)),
+    [selectedRows, batchPrintedIds],
+  );
+
+  async function runPrint(rows: DetailParcel[]) {
+    if (rows.length === 0) {
+      toast.error("Aucun colis à imprimer");
       return;
     }
-
-    const reprintCount = selectedRows.filter((r) =>
-      batchPrintedIds.has(r.id),
-    ).length;
-    const total = selectedRows.length;
-
-    if (reprintCount > 0) {
-      const ok = await confirm({
-        title:
-          reprintCount === 1
-            ? "Réimpression d’un colis"
-            : `Réimpression de ${reprintCount} colis`,
-        description:
-          reprintCount === total
-            ? `${reprintCount} colis seront imprimés à nouveau. Continuer puis retourner à la liste ?`
-            : `${reprintCount} colis sur ${total} seront imprimés à nouveau. Les autres seront imprimés pour la première fois. Continuer puis retourner à la liste ?`,
-        confirmLabel: "Imprimer puis retourner",
-        cancelLabel: "Annuler",
-        tone: "danger",
-      });
-      if (!ok) return;
-    } else {
-      const ok = await confirm({
-        title:
-          total === 1
-            ? "Imprimer 1 bordereau"
-            : `Imprimer ${total} bordereaux`,
-        description: "L’impression s’ouvrira, puis vous serez renvoyé à la liste des colis.",
-        confirmLabel: "Imprimer puis retourner",
-        cancelLabel: "Annuler",
-      });
-      if (!ok) return;
-    }
-
     try {
-      openBordereauxPdf(selectedRows, { includeMode: showModes });
-      const printed = selectedRows.map((r) => r.id);
+      openBordereauxPdf(rows, { includeMode: showModes });
+      const printed = rows.map((r) => r.id);
       const next = markBatchPrinted(userId, printed);
       setBatchPrintedIds(next);
       setSelectedIds(new Set());
+      setPrintChoiceOpen(false);
       toast.success(
-        total === 1
+        rows.length === 1
           ? "Bordereau envoyé à l’impression"
-          : `${total} bordereaux envoyés à l’impression`,
+          : `${rows.length} bordereaux envoyés à l’impression`,
       );
       const redirectTo = listRedirectPath();
       if (redirectTo) {
@@ -364,6 +352,34 @@ export function ParcelDetailTable({
         err instanceof Error ? err.message : undefined,
       );
     }
+  }
+
+  async function printSelected() {
+    if (selectedRows.length === 0) {
+      toast.error("Sélectionnez au moins un colis");
+      return;
+    }
+
+    const total = selectedRows.length;
+    const reprintCount = alreadyPrintedRows.length;
+
+    if (reprintCount === 0) {
+      const ok = await confirm({
+        title:
+          total === 1
+            ? "Imprimer 1 bordereau"
+            : `Imprimer ${total} bordereaux`,
+        description:
+          "L’impression s’ouvrira, puis vous serez renvoyé à la liste des colis.",
+        confirmLabel: "Imprimer puis retourner",
+        cancelLabel: "Annuler",
+      });
+      if (!ok) return;
+      await runPrint(selectedRows);
+      return;
+    }
+
+    setPrintChoiceOpen(true);
   }
 
   printSelectedRef.current = () => {
@@ -440,7 +456,7 @@ export function ParcelDetailTable({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        {multiSelect ? (
+        {canSelectAll ? (
           <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] font-medium text-ops-ink/55">
             <input
               ref={selectAllMobileRef}
@@ -710,23 +726,27 @@ export function ParcelDetailTable({
                 <tr>
                   {multiSelect ? (
                     <th className={cn(thClass, "w-10 px-2 py-2")}>
-                      <input
-                        ref={selectAllRef}
-                        type="checkbox"
-                        checked={allFilteredSelected}
-                        onChange={toggleSelectAllFiltered}
-                        className="h-4 w-4 rounded border-ops-card accent-ops-accent"
-                        title={
-                          allFilteredSelected
-                            ? "Tout désélectionner"
-                            : `Tout sélectionner (${filtered.length})`
-                        }
-                        aria-label={
-                          allFilteredSelected
-                            ? "Tout désélectionner"
-                            : `Tout sélectionner (${filtered.length})`
-                        }
-                      />
+                      {canSelectAll ? (
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={allFilteredSelected}
+                          onChange={toggleSelectAllFiltered}
+                          className="h-4 w-4 rounded border-ops-card accent-ops-accent"
+                          title={
+                            allFilteredSelected
+                              ? "Tout désélectionner"
+                              : `Tout sélectionner (${filtered.length})`
+                          }
+                          aria-label={
+                            allFilteredSelected
+                              ? "Tout désélectionner"
+                              : `Tout sélectionner (${filtered.length})`
+                          }
+                        />
+                      ) : (
+                        <span className="sr-only">Sélection</span>
+                      )}
                     </th>
                   ) : null}
                   <SortableTh
@@ -1041,6 +1061,48 @@ export function ParcelDetailTable({
           </div>
         </div>
       ) : null}
+
+      <Modal
+        open={printChoiceOpen}
+        onClose={() => setPrintChoiceOpen(false)}
+        title="Que voulez-vous imprimer ?"
+        description={`${selectedRows.length} colis sélectionnés · ${neverPrintedRows.length} jamais imprimés · ${alreadyPrintedRows.length} déjà imprimés.`}
+        size="md"
+        footer={
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              icon={Printer}
+              disabled={neverPrintedRows.length === 0}
+              onClick={() => void runPrint(neverPrintedRows)}
+            >
+              {neverPrintedRows.length === 0
+                ? "Aucun non imprimé"
+                : neverPrintedRows.length === 1
+                  ? "Imprimer le non imprimé (1)"
+                  : `Imprimer les non imprimés (${neverPrintedRows.length})`}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              icon={Printer}
+              onClick={() => void runPrint(selectedRows)}
+            >
+              {selectedRows.length === 1
+                ? "Imprimer toute la sélection (1)"
+                : `Imprimer toute la sélection (${selectedRows.length})`}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPrintChoiceOpen(false)}
+            >
+              Annuler
+            </Button>
+          </div>
+        }
+      />
     </div>
   );
 }

@@ -31,6 +31,7 @@ export type MockUser = {
     label: string;
     required: boolean;
   }> | null;
+  createParcelDraft?: Record<string, unknown> | null;
   productNotes?: string | null;
   cinFrontUrl?: string | null;
   cinBackUrl?: string | null;

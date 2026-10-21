@@ -31,17 +31,26 @@ import {
   countForStatusKey,
   DASHBOARD_STATUS_KEYS,
   STATUS_ALIAS_KEYS,
+  statusKeysMatching,
 } from "@/lib/dashboard-statuses";
+import { formatTnd, toAmount } from "@/lib/domain";
 import { REASON_VISIBLE_STATUSES } from "@/lib/parcel-transitions";
+import { salePriceOf } from "@/lib/sender-finance";
 import { STATUS_META, type StatusKey } from "@/lib/status-meta";
 
-type Countable = { status: string };
+type Countable = {
+  status: string;
+  price?: number | string;
+  unitSalePrice?: number | string | null;
+};
 
 type FilterOption = {
   key: string | null;
   label: string;
   title: string;
   count: number;
+  /** Monetary total — shown instead of count for Livré. */
+  totalAmount: number | null;
   color: string;
   Icon: ComponentType<LucideProps>;
 };
@@ -140,12 +149,29 @@ export function StatusFilterBar({
     [parcels],
   );
 
+  const livresTotal = useMemo(() => {
+    const match = new Set(statusKeysMatching("LIVRES"));
+    return parcels.reduce((sum, p) => {
+      if (!match.has(p.status)) return sum;
+      return (
+        sum +
+        salePriceOf({
+          price: toAmount(p.price),
+          unitSalePrice:
+            p.unitSalePrice == null ? null : toAmount(p.unitSalePrice),
+          status: p.status,
+        })
+      );
+    }, 0);
+  }, [parcels]);
+
   const options = useMemo((): FilterOption[] => {
     const all: FilterOption = {
       key: null,
       label: "Tous",
       title: "Tous les colis",
       count: totalCount,
+      totalAmount: null,
       color: "#991211",
       Icon: LayoutGrid,
     };
@@ -156,15 +182,21 @@ export function StatusFilterBar({
         label: SHORT_LABEL[key] ?? meta?.label ?? key,
         title: meta?.label ?? key,
         count: countForStatusKey(key, counts),
+        totalAmount: key === "LIVRES" ? livresTotal : null,
         color: meta?.color ?? "#64748b",
         Icon: STATUS_ICON[key] ?? Package,
       };
     });
     return [all, ...rest];
-  }, [counts, keys, totalCount]);
+  }, [counts, keys, livresTotal, totalCount]);
 
   const selected =
     options.find((opt) => opt.key === current) ?? options[0]!;
+
+  function metricLabel(opt: FilterOption): string {
+    if (opt.totalAmount != null) return formatTnd(opt.totalAmount);
+    return String(opt.count);
+  }
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -230,7 +262,7 @@ export function StatusFilterBar({
                   {selected.label}
                 </span>
                 <span className="shrink-0 font-display text-[13px] font-bold tabular-nums text-ops-ink/45">
-                  {selected.count}
+                  {metricLabel(selected)}
                 </span>
               </span>
             </span>
@@ -280,7 +312,7 @@ export function StatusFilterBar({
                       {opt.label}
                     </span>
                     <span className="shrink-0 font-display text-[13px] font-bold tabular-nums text-ops-ink/45">
-                      {opt.count}
+                      {metricLabel(opt)}
                     </span>
                     {active ? (
                       <Check

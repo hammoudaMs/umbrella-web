@@ -24,6 +24,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatTnd, type Parcel, type ReturnLot } from "@/lib/domain";
 import { openReturnLotBordereauPdf } from "@/lib/parcel-report";
+import { canManageReturns } from "@/lib/role-capabilities";
 import { RETURN_STATUSES, type StatusKey } from "@/lib/status-meta";
 import { useApiQuery } from "@/lib/use-api";
 import { cn } from "@/lib/cn";
@@ -34,18 +35,19 @@ export function ReturnLotManager() {
   const { session } = useAuth();
   const toast = useToast();
   const token = session?.accessToken;
+  const allowed = canManageReturns(session?.user.role);
   const {
     data: parcelsData,
     error: parcelsError,
     loading: parcelsLoading,
     reload: reloadParcels,
-  } = useApiQuery<Parcel[]>("/parcels");
+  } = useApiQuery<Parcel[]>(allowed ? "/parcels" : null);
   const {
     data: lotsData,
     error: lotsError,
     loading: lotsLoading,
     reload: reloadLots,
-  } = useApiQuery<ReturnLot[]>("/return-lots");
+  } = useApiQuery<ReturnLot[]>(allowed ? "/return-lots" : null);
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [creating, setCreating] = useState(false);
@@ -115,6 +117,15 @@ export function ReturnLotManager() {
 
   const loading = parcelsLoading || lotsLoading;
   const error = parcelsError ?? lotsError;
+
+  if (!allowed) {
+    return (
+      <EmptyState
+        title="Accès retours réservé"
+        description="Cette file est réservée au support, magasinier et ops."
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

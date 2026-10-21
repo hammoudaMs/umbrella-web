@@ -382,12 +382,15 @@ function opsStatusTone(status: string): { bg: string; ink: string } {
     return { bg: "#00875A", ink: "#FFFFFF" };
   if (
     status === "EN_COURS" ||
+    status === "AFFECTE_LIVREUR" ||
     status === "A_ENLEVER" ||
     status === "ENLEVES"
   )
     return { bg: "#0065FF", ink: "#FFFFFF" };
   if (
     status === "AU_DEPOT" ||
+    status === "EXPEDIE_DESTINATION" ||
+    status === "ARRIVE_DESTINATION" ||
     status === "A_VERIFIER" ||
     status === "ECHANGES" ||
     status === "REMBOURSES"

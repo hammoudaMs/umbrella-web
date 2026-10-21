@@ -9,7 +9,6 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { SenderPlacePerformance } from "@/components/SenderPlacePerformance";
 import {
   Badge,
   EmptyState,
@@ -124,6 +123,7 @@ function moneyOf(p: Parcel) {
     price: toAmount(p.price),
     unitSalePrice:
       p.unitSalePrice != null ? toAmount(p.unitSalePrice) : null,
+    unitCost: p.unitCost != null ? toAmount(p.unitCost) : null,
     deliveryFee: toAmount(p.deliveryFee ?? 0),
     returnFee: toAmount(p.returnFee ?? 0),
     status: p.status,
@@ -345,38 +345,74 @@ export function SenderFinancesPage() {
         <div
           role="tablist"
           aria-label={t("finances.stockLead")}
-          className="grid grid-cols-3 gap-1.5 sm:grid-cols-5 lg:gap-2"
+          className="space-y-1.5 lg:space-y-2"
         >
-          {filters.map((f) => {
-            const active = stage === f.key;
-            return (
-              <button
-                key={f.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setStage(f.key)}
-                className={cn(
-                  "flex min-h-[3.25rem] w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-14",
-                  active
-                    ? "border-ops-accent bg-ops-accent text-white"
-                    : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
-                )}
-              >
-                <span className="w-full text-[11px] font-semibold leading-snug sm:text-xs lg:text-sm">
-                  {f.label}
-                </span>
-                <span
+          {filters
+            .filter((f) => f.key === "all")
+            .map((f) => {
+              const active = stage === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setStage(f.key)}
                   className={cn(
-                    "text-sm font-bold tabular-nums leading-none",
-                    active ? "text-white" : "text-ops-ink",
+                    "flex min-h-[3.25rem] w-full flex-row items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-start transition sm:min-h-14",
+                    active
+                      ? "border-ops-accent bg-ops-accent text-white"
+                      : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
                   )}
                 >
-                  {loading ? "…" : f.count}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="text-[13px] font-semibold sm:text-sm lg:text-base">
+                    {f.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-base font-bold tabular-nums leading-none",
+                      active ? "text-white" : "text-ops-ink",
+                    )}
+                  >
+                    {loading ? "…" : f.count}
+                  </span>
+                </button>
+              );
+            })}
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:gap-2">
+            {filters
+              .filter((f) => f.key !== "all")
+              .map((f) => {
+                const active = stage === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setStage(f.key)}
+                    className={cn(
+                      "flex min-h-[3.25rem] w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-14",
+                      active
+                        ? "border-ops-accent bg-ops-accent text-white"
+                        : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20 active:bg-ops-page",
+                    )}
+                  >
+                    <span className="w-full text-[11px] font-semibold leading-snug sm:text-xs lg:text-sm">
+                      {f.label}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-sm font-bold tabular-nums leading-none",
+                        active ? "text-white" : "text-ops-ink",
+                      )}
+                    >
+                      {loading ? "…" : f.count}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
         </div>
       </section>
 
@@ -567,9 +603,6 @@ export function SenderFinancesPage() {
         )}
       </section>
 
-      <SenderPlacePerformance parcels={list} />
-
-      {/* Closed value — compact */}
       <section className="space-y-2.5">
         <h2 className="text-sm font-semibold text-ops-ink">
           {t("finances.ledgerTitle")}

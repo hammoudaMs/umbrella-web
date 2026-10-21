@@ -55,11 +55,17 @@ import {
   netPayoutOf,
   roundMoney,
 } from "@/lib/sender-finance";
+import {
+  stockLabel,
+  type StockListResponse,
+} from "@/lib/stock-types";
 import { openBordereauPdf } from "@/lib/parcel-report";
 import {
-  clearCreateParcelDraft,
+  clearCreateParcelDraftAll,
+  fetchCreateParcelDraft,
   loadCreateParcelDraft,
   markCreateParcelReopen,
+  persistCreateParcelDraft,
   saveCreateParcelDraft,
   type CreateParcelDraft,
 } from "@/lib/create-parcel-draft";
@@ -196,6 +202,10 @@ export function CreateParcelWizard({
     () => deliveryRoutesData ?? [],
     [deliveryRoutesData],
   );
+  const { data: stockData } = useApiQuery<StockListResponse>(
+    open && isSender ? "/stock" : null,
+  );
+  const stockItems = useMemo(() => stockData?.items ?? [], [stockData]);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -228,6 +238,9 @@ export function CreateParcelWizard({
   const [zoneName, setZoneName] = useState<string | null>(null);
   const [price, setPrice] = useState("");
   const [unitSalePrice, setUnitSalePrice] = useState("");
+  const [productSource, setProductSource] = useState<"stock" | "new">("new");
+  const [stockItemId, setStockItemId] = useState("");
+  const [unitCost, setUnitCost] = useState("");
   const [deliveryFee, setDeliveryFee] = useState(String(DEFAULT_DELIVERY_FEE));
   const [returnFee, setReturnFee] = useState(String(DEFAULT_RETURN_FEE));
   const [articleCount, setArticleCount] = useState("1");
@@ -244,6 +257,10 @@ export function CreateParcelWizard({
   const draftRestoredRef = useRef(false);
   const [draftReady, setDraftReady] = useState(false);
   const userId = session?.user.id;
+  const selectedStock = useMemo(
+    () => stockItems.find((s) => String(s.id) === stockItemId) ?? null,
+    [stockItems, stockItemId],
+  );
 
   const addressQuality = useMemo(() => scoreAddress(location), [location]);
   const step = STEPS[stepIndex];
@@ -275,6 +292,9 @@ export function CreateParcelWizard({
       zoneName,
       price,
       unitSalePrice,
+      productSource,
+      stockItemId,
+      unitCost,
       deliveryFee,
       returnFee,
       articleCount,
@@ -316,6 +336,13 @@ export function CreateParcelWizard({
     setZoneName(draft.zoneName ?? null);
     setPrice(draft.price ?? "");
     setUnitSalePrice(draft.unitSalePrice ?? "");
+    setProductSource(
+      draft.productSource === "stock" || draft.stockItemId
+        ? "stock"
+        : "new",
+    );
+    setStockItemId(draft.stockItemId ?? "");
+    setUnitCost(draft.unitCost ?? "");
     setDeliveryFee(draft.deliveryFee ?? String(DEFAULT_DELIVERY_FEE));
     setReturnFee(draft.returnFee ?? String(DEFAULT_RETURN_FEE));
     setArticleCount(draft.articleCount ?? "1");
@@ -358,6 +385,9 @@ export function CreateParcelWizard({
     setZoneName(null);
     setPrice("");
     setUnitSalePrice("");
+    setProductSource("new");
+    setStockItemId("");
+    setUnitCost("");
     setDeliveryFee(String(DEFAULT_DELIVERY_FEE));
     setReturnFee(String(DEFAULT_RETURN_FEE));
     setArticleCount("1");
@@ -381,26 +411,44 @@ export function CreateParcelWizard({
     setSavedAddresses(loadAddressBook());
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
-    const draft = loadCreateParcelDraft(userId);
-    if (draft) {
-      applyDraft(draft);
+    let cancelled = false;
+    const token = session?.accessToken;
+    const local = loadCreateParcelDraft(userId);
+    if (local) {
+      applyDraft(local);
     } else {
       setCreatedParcel(null);
     }
-    setDraftReady(true);
-  }, [open, userId]);
+    void (async () => {
+      const remote = await fetchCreateParcelDraft(token);
+      if (cancelled) return;
+      if (remote) applyDraft(remote);
+      setDraftReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, userId, session?.accessToken]);
 
   useEffect(() => {
     if (!open || !userId || !draftReady || createdParcel) return;
-    const timer = window.setTimeout(() => {
-      saveCreateParcelDraft(userId, snapshotDraft());
+    const draft = snapshotDraft();
+    const localTimer = window.setTimeout(() => {
+      saveCreateParcelDraft(userId, draft);
     }, 250);
-    return () => window.clearTimeout(timer);
+    const remoteTimer = window.setTimeout(() => {
+      void persistCreateParcelDraft(session?.accessToken, draft);
+    }, 700);
+    return () => {
+      window.clearTimeout(localTimer);
+      window.clearTimeout(remoteTimer);
+    };
   }, [
     open,
     userId,
     draftReady,
     createdParcel,
+    session?.accessToken,
     stepIndex,
     recipientName,
     phone,
@@ -425,6 +473,9 @@ export function CreateParcelWizard({
     zoneName,
     price,
     unitSalePrice,
+    productSource,
+    stockItemId,
+    unitCost,
     deliveryFee,
     returnFee,
     articleCount,
@@ -433,6 +484,7 @@ export function CreateParcelWizard({
     exchangeNotes,
     notes,
     parcelAdvancedOpen,
+    recipientLookupHint,
   ]);
 
   useEffect(() => {
@@ -544,13 +596,17 @@ export function CreateParcelWizard({
   }, [location.governorate, deliveryRoutes]);
 
   function handleClose() {
-    clearCreateParcelDraft(userId);
+    if (userId && !createdParcel) {
+      const draft = snapshotDraft();
+      saveCreateParcelDraft(userId, draft);
+      void persistCreateParcelDraft(session?.accessToken, draft);
+    }
     resetForm();
     onClose();
   }
 
   function startAnother() {
-    clearCreateParcelDraft(userId);
+    clearCreateParcelDraftAll(userId, session?.accessToken);
     resetForm();
   }
 
@@ -560,7 +616,11 @@ export function CreateParcelWizard({
   }
 
   function goToSettings() {
-    if (userId) saveCreateParcelDraft(userId, snapshotDraft());
+    if (userId) {
+      const draft = snapshotDraft();
+      saveCreateParcelDraft(userId, draft);
+      void persistCreateParcelDraft(session?.accessToken, draft);
+    }
     markCreateParcelReopen();
     onClose();
     if (role) router.push(`${PORTAL_BY_ROLE[role]}/settings`);
@@ -660,9 +720,25 @@ export function CreateParcelWizard({
         toast.error("Prix invalide");
         return false;
       }
+      if (isSender && productSource === "stock") {
+        if (!stockItemId) {
+          toast.error("Choisissez un article du stock");
+          return false;
+        }
+        const item = stockItems.find((s) => String(s.id) === stockItemId);
+        const need = Math.max(1, Number(articleCount || 1));
+        if (!item || item.quantity < need) {
+          toast.error(
+            item
+              ? `Stock insuffisant (dispo ${item.quantity})`
+              : "Article stock introuvable",
+          );
+          return false;
+        }
+      }
       if (allowTry && !liabilityAccepted) {
         toast.error(
-          "Acceptez la responsabilité (dommage / vol) pour l'essai produit.",
+          "Acceptez la responsabilité (dommage / vol) pour « ouvrir avant de payer ».",
         );
         return false;
       }
@@ -708,7 +784,7 @@ export function CreateParcelWizard({
     }
     if (allowTry && !liabilityAccepted) {
       toast.error(
-        "Acceptez la responsabilité (dommage / vol) pour l'essai produit.",
+          "Acceptez la responsabilité (dommage / vol) pour « ouvrir avant de payer ».",
       );
       return;
     }
@@ -769,6 +845,11 @@ export function CreateParcelWizard({
               returnFee: Number.isFinite(returnFeeNum)
                 ? returnFeeNum
                 : DEFAULT_RETURN_FEE,
+              ...(productSource === "stock" && stockItemId
+                ? { stockItemId: Number(stockItemId) }
+                : unitCost.trim()
+                  ? { unitCost: Number(unitCost) }
+                  : {}),
             }
           : {}),
         articleCount: Number(articleCount || 1),
@@ -817,7 +898,7 @@ export function CreateParcelWizard({
         }
       }
 
-      clearCreateParcelDraft(userId);
+      clearCreateParcelDraftAll(userId, session?.accessToken);
       setCreatedParcel(created);
       onCreated?.();
     } catch (err) {
@@ -1286,10 +1367,196 @@ export function CreateParcelWizard({
               </h3>
               <p className="mt-1 text-sm text-ops-ink/50">
                 {isSender
-                  ? "Montant COD obligatoire. Infos article optionnelles."
+                  ? "Choisissez un article du stock ou saisissez un nouveau produit."
                   : "COD obligatoire. Type de produit optionnel."}
               </p>
             </div>
+
+            {isSender ? (
+              <div
+                role="radiogroup"
+                aria-label="Source produit"
+                className="grid grid-cols-2 gap-2"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={productSource === "stock"}
+                  onClick={() => setProductSource("stock")}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-start transition",
+                    productSource === "stock"
+                      ? "border-ops-accent bg-ops-accent text-white"
+                      : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20",
+                  )}
+                >
+                  <span className="block text-sm font-semibold">
+                    Depuis le stock
+                  </span>
+                  <span
+                    className={cn(
+                      "mt-0.5 block text-[11px] leading-snug",
+                      productSource === "stock"
+                        ? "text-white/75"
+                        : "text-ops-ink/40",
+                    )}
+                  >
+                    Déduit la quantité
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={productSource === "new"}
+                  onClick={() => {
+                    setProductSource("new");
+                    setStockItemId("");
+                  }}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-start transition",
+                    productSource === "new"
+                      ? "border-ops-accent bg-ops-accent text-white"
+                      : "border-ops-card bg-ops-surface text-ops-ink/70 hover:border-ops-ink/20",
+                  )}
+                >
+                  <span className="block text-sm font-semibold">
+                    Nouveau produit
+                  </span>
+                  <span
+                    className={cn(
+                      "mt-0.5 block text-[11px] leading-snug",
+                      productSource === "new"
+                        ? "text-white/75"
+                        : "text-ops-ink/40",
+                    )}
+                  >
+                    Saisie libre
+                  </span>
+                </button>
+              </div>
+            ) : null}
+
+            {isSender && productSource === "stock" ? (
+              <div className="space-y-3 rounded-xl border border-ops-card bg-ops-page/40 p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel htmlFor="stockItemId">Article à livrer</FieldLabel>
+                  <button
+                    type="button"
+                    className="text-[11px] font-semibold text-ops-accent underline-offset-2 hover:underline"
+                    onClick={() => {
+                      markCreateParcelReopen();
+                      router.push("/expediteur/stock");
+                    }}
+                  >
+                    Gérer le stock
+                  </button>
+                </div>
+                {stockItems.length === 0 ? (
+                  <p className="text-sm text-ops-ink/55">
+                    Aucun article en stock.{" "}
+                    <button
+                      type="button"
+                      className="font-semibold text-ops-accent underline-offset-2 hover:underline"
+                      onClick={() => {
+                        markCreateParcelReopen();
+                        router.push("/expediteur/stock");
+                      }}
+                    >
+                      Ajouter un article
+                    </button>{" "}
+                    ou choisissez « Nouveau produit ».
+                  </p>
+                ) : (
+                  <select
+                    id="stockItemId"
+                    className={fieldClass}
+                    value={stockItemId}
+                    required
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setStockItemId(id);
+                      const item = stockItems.find((s) => String(s.id) === id);
+                      if (item) {
+                        setUnitCost(String(item.unitCost));
+                        setUnitSalePrice((prev) => prev || price);
+                        setArticleName(item.name);
+                        if (item.variant) setColor(item.variant);
+                      }
+                    }}
+                  >
+                    <option value="">— Choisir un article —</option>
+                    {stockItems.map((s) => (
+                      <option key={s.id} value={s.id} disabled={s.quantity < 1}>
+                        {stockLabel(s)} · {s.quantity} pcs · {s.unitCost} DT
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedStock ? (
+                  <p className="text-[11px] text-ops-ink/45">
+                    {stockLabel(selectedStock)} · dispo {selectedStock.quantity}{" "}
+                    · coût {selectedStock.unitCost} DT / u (déduit à la création)
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {isSender && productSource === "new" ? (
+              <div className="space-y-3">
+                <div>
+                  <FieldLabel htmlFor="articleName">
+                    Nom produit (optionnel)
+                  </FieldLabel>
+                  <input
+                    id="articleName"
+                    name="articleName"
+                    className={fieldClass}
+                    value={articleName}
+                    onChange={(e) => setArticleName(e.target.value)}
+                    placeholder="Ex. Robe été, chargeur USB…"
+                    maxLength={120}
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="unitCost">
+                    Prix unitaire achat (optionnel)
+                  </FieldLabel>
+                  <div className="relative">
+                    <input
+                      id="unitCost"
+                      type="number"
+                      step="0.001"
+                      min={0}
+                      inputMode="decimal"
+                      className={cn(fieldClass, "pr-12")}
+                      value={unitCost}
+                      onChange={(e) => setUnitCost(e.target.value)}
+                      placeholder="50"
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
+                      DT
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {!isSender ? (
+              <div>
+                <FieldLabel htmlFor="articleName">
+                  Nom produit (optionnel)
+                </FieldLabel>
+                <input
+                  id="articleName"
+                  name="articleName"
+                  className={fieldClass}
+                  value={articleName}
+                  onChange={(e) => setArticleName(e.target.value)}
+                  placeholder="Ex. Robe été, chargeur USB…"
+                  maxLength={120}
+                />
+              </div>
+            ) : null}
 
             <div>
               <FieldLabel htmlFor="price">
@@ -1318,53 +1585,28 @@ export function CreateParcelWizard({
               </div>
             </div>
 
-            <div>
-              <FieldLabel htmlFor="articleName">
-                Nom produit (optionnel)
-              </FieldLabel>
-              <input
-                id="articleName"
-                name="articleName"
-                className={fieldClass}
-                value={articleName}
-                onChange={(e) => setArticleName(e.target.value)}
-                placeholder="Ex. Robe été, chargeur USB…"
-                maxLength={120}
-              />
-            </div>
-
             {isSender ? (
-              <div className="space-y-3 rounded-xl border border-ops-card bg-ops-page/40 p-3.5">
+              <div className="space-y-2 rounded-xl border border-ops-card bg-ops-page/40 p-3.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ops-ink/45">
-                  Marge
+                  Marge estimée
                 </p>
-                <div>
-                  <FieldLabel htmlFor="unitSalePrice">
-                    Prix de vente / unité
-                  </FieldLabel>
-                  <div className="relative">
-                    <input
-                      id="unitSalePrice"
-                      type="number"
-                      step="0.001"
-                      min={0}
-                      inputMode="decimal"
-                      className={cn(fieldClass, "pr-12")}
-                      value={unitSalePrice}
-                      onChange={(e) => setUnitSalePrice(e.target.value)}
-                      placeholder={price || "0"}
-                    />
-                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-ops-ink/40">
-                      DT
-                    </span>
-                  </div>
-                </div>
                 {(() => {
                   const cod = Number(price);
                   const sale = Number(unitSalePrice || price);
-                  const fee = Number(deliveryFee || 0);
-                  if (!Number.isFinite(cod) || !Number.isFinite(sale)) return null;
-                  const profitIfDelivered = roundMoney(sale - cod - fee);
+                  const fee = Number(deliveryFee || DEFAULT_DELIVERY_FEE);
+                  const cost = Number(
+                    productSource === "stock"
+                      ? (selectedStock?.unitCost ?? 0)
+                      : unitCost || 0,
+                  );
+                  if (!Number.isFinite(cod) || !Number.isFinite(sale)) {
+                    return (
+                      <p className="text-xs text-ops-ink/45">
+                        Saisissez le COD pour voir le profit.
+                      </p>
+                    );
+                  }
+                  const profitIfDelivered = roundMoney(sale - fee - cost);
                   const net = netPayoutOf({
                     price: cod,
                     deliveryFee: fee,
@@ -1373,10 +1615,20 @@ export function CreateParcelWizard({
                   return (
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ops-ink/60">
                       <span>
-                        Profit si livré ·{" "}
+                        CA si livré ·{" "}
+                        <strong className="text-ops-ink tabular-nums">
+                          {formatMoney(sale)}
+                        </strong>
+                      </span>
+                      <span>
+                        Profit net ·{" "}
                         <strong className="text-ops-ink tabular-nums">
                           {formatMoney(profitIfDelivered)}
                         </strong>
+                        <span className="text-ops-ink/40">
+                          {" "}
+                          (CA − liv. − achat)
+                        </span>
                       </span>
                       <span>
                         Net versement ·{" "}
@@ -1540,7 +1792,7 @@ export function CreateParcelWizard({
                   onClick={() => setParcelAdvancedOpen((v) => !v)}
                   className="flex w-full items-center justify-between rounded-xl border border-ops-card bg-ops-page/50 px-3.5 py-3 text-left text-sm font-semibold text-ops-ink/70 transition hover:border-ops-accent/35 hover:text-ops-ink"
                 >
-                  Plus de détails (quantité, essai, fragile…)
+                  Plus de détails (quantité, ouvrir avant de payer, fragile…)
                   <ChevronDown
                     className={cn(
                       "h-4 w-4 shrink-0 transition",
@@ -1867,7 +2119,7 @@ export function CreateParcelWizard({
               </ReviewCard>
               <ReviewCard title="Options">
                 <p className="text-ops-ink/70">
-                  Essai : {allowTry ? "Oui" : "Non"} · Fragile :{" "}
+                  Ouvrir avant de payer : {allowTry ? "Oui" : "Non"} · Fragile :{" "}
                   {isFragile ? "Oui" : "Non"}
                 </p>
                 <p className="text-ops-ink/70">
@@ -1969,7 +2221,7 @@ function ParcelOptionsBlock({
       <div className="grid gap-4 rounded-xl border border-ops-card bg-ops-page/60 p-4 sm:grid-cols-2">
         <fieldset>
           <legend className="mb-2 text-sm font-medium text-ops-ink">
-            Essai produit / ouvrir avant paiement
+            Ouvrir avant de payer
           </legend>
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="inline-flex items-center gap-2">
@@ -2057,12 +2309,12 @@ function ParcelOptionsBlock({
       {allowTry ? (
         <div className="rounded-xl border border-ops-accent/25 bg-ops-accent/[0.08] p-4">
           <p className="text-sm font-semibold text-ops-ink">
-            Responsabilité expéditeur — essai produit
+            Responsabilité expéditeur — ouvrir avant de payer
           </p>
           <p className="mt-2 text-sm leading-relaxed text-ops-ink/50">
-            En autorisant l&apos;essai / l&apos;ouverture du colis avant
-            paiement, vous acceptez que tout dommage, détérioration, perte ou
-            vol survenant pendant cette phase est à votre charge.
+            En autorisant l&apos;ouverture du colis avant paiement, vous
+            acceptez que tout dommage, détérioration, perte ou vol survenant
+            pendant cette phase est à votre charge.
           </p>
           <label className="mt-4 flex items-start gap-3 text-sm text-ops-ink">
             <input
@@ -2073,7 +2325,7 @@ function ParcelOptionsBlock({
             />
             <span>
               Je confirme et j&apos;assume toute responsabilité en cas de
-              dommage ou de vol lié à l&apos;essai du produit.
+              dommage ou de vol lié à l&apos;ouverture avant paiement.
             </span>
           </label>
         </div>

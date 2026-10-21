@@ -32,6 +32,8 @@ export type Parcel = {
   address: string;
   price: number | string;
   unitSalePrice?: number | string | null;
+  unitCost?: number | string | null;
+  stockItemId?: number | null;
   deliveryFee?: number | string | null;
   returnFee?: number | string | null;
   notes: string | null;
@@ -79,6 +81,8 @@ export type Parcel = {
   landmarkPhotoName?: string | null;
   addressQuality?: number | null;
   codSettledAt?: string | null;
+  /** When status first became LIVRES — hold clock for versement. */
+  deliveredAt?: string | null;
 };
 
 export type TicketStatus = "EN_COURS" | "RESOLU" | "FERME";
@@ -207,6 +211,7 @@ export type PaymentStatus =
   | "VALIDE_CHEF"
   | "VALIDE_EXPERT"
   | "APPROUVE"
+  | "AWAITING_DECHARGE"
   | "PAYE"
   | "REJETE";
 
@@ -224,6 +229,8 @@ export type Payment = {
   note: string | null;
   createdAt: string;
   updatedAt?: string;
+  dechargeUrl?: string | null;
+  dechargeUploadedAt?: string | null;
   sender?: { id?: number; name: string; email: string; agencyId?: number | null };
   items: Array<{ parcel: { id: number; code: string | null }; amount: number | string }>;
   history?: PaymentHistoryEntry[];

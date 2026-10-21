@@ -137,9 +137,9 @@ async function httpRequest<T>(
 
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit & { token?: string } = {},
+  options: RequestInit & { token?: string; silent?: boolean } = {},
 ): Promise<T> {
-  const { token, ...init } = options;
+  const { token, silent = false, ...init } = options;
   const method = (init.method ?? "GET").toUpperCase();
   const send = (accessToken: string | undefined) =>
     USE_MOCK
@@ -153,14 +153,14 @@ export async function apiFetch<T>(
 
   try {
     const result = await send(token);
-    if (method !== "GET" && method !== "HEAD") notifyDataChanged();
+    if (!silent && method !== "GET" && method !== "HEAD") notifyDataChanged();
     return result;
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401 || !token) throw error;
     const renewed = await refreshToken();
     if (!renewed) throw error;
     const result = await send(renewed);
-    if (method !== "GET" && method !== "HEAD") notifyDataChanged();
+    if (!silent && method !== "GET" && method !== "HEAD") notifyDataChanged();
     return result;
   }
 }

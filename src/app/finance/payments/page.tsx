@@ -3,5 +3,5 @@
 import { PaymentsManager } from "@/components/PaymentsManager";
 
 export default function FinancePaymentsPage() {
-  return <PaymentsManager canModerate />;
+  return <PaymentsManager canCreate canModerate />;
 }

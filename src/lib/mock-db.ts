@@ -39,7 +39,11 @@ import {
 import { STATUS_ORDER } from "@/lib/portal-nav";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 import type { PickupManifest, ReturnLot } from "@/lib/domain";
-import { netPayoutOf, summarizeSenderFinance } from "@/lib/sender-finance";
+import {
+  isHoldElapsed,
+  netPayoutOf,
+  summarizeSenderFinance,
+} from "@/lib/sender-finance";
 import {
   DEFAULT_STATUS_CATEGORIES,
   isStatusCategoryIcon,
@@ -58,7 +62,8 @@ import {
  * so the UI behaves the same with NEXT_PUBLIC_USE_MOCK=true or against umbrella/api.
  */
 
-const STORAGE_KEY = "umbrella.mock-db.v15";
+const STORAGE_KEY = "umbrella.mock-db.v16";
+const DEFAULT_HOLD_HOURS = 48;
 export const MOCK_RESET_EVENT = "umbrella:mock-db-reset";
 const MAX_RETURN_LOT = 20;
 const MAX_PICKUP_MANIFEST = 20;
@@ -163,6 +168,32 @@ type MockCashRegister = {
   updatedAt: string;
 };
 
+type MockStockItem = {
+  id: number;
+  senderId: number;
+  name: string;
+  variant: string;
+  size: string | null;
+  sku: string | null;
+  quantity: number;
+  unitCost: number;
+  defaultSalePrice: number | null;
+  lowStockAt: number | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function stockItemView(s: MockStockItem) {
+  const stockValue = Math.round(s.quantity * s.unitCost * 1000) / 1000;
+  return {
+    ...s,
+    stockValue,
+    lowStock: s.lowStockAt != null ? s.quantity <= s.lowStockAt : false,
+  };
+}
+
 type MockDb = {
   users: MockUser[];
   parcels: MockParcel[];
@@ -179,6 +210,8 @@ type MockDb = {
   pickupManifests: MockPickupManifest[];
   cashRegisters: MockCashRegister[];
   livreurDeposits: MockLivreurDeposit[];
+  stockItems: MockStockItem[];
+  platformSettings: { versementHoldHours: number };
 };
 
 type Actor = {
@@ -228,14 +261,16 @@ const ACTIVE_PAYMENT: PaymentStatus[] = [
   "VALIDE_CHEF",
   "VALIDE_EXPERT",
   "APPROUVE",
+  "AWAITING_DECHARGE",
   "PAYE",
 ];
 const PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
   EN_DEMANDE: ["VALIDE_FINANCE", "APPROUVE", "REJETE"],
   VALIDE_FINANCE: ["VALIDE_CHEF", "REJETE"],
-  VALIDE_CHEF: ["VALIDE_EXPERT", "PAYE", "REJETE"],
-  VALIDE_EXPERT: ["PAYE", "REJETE"],
-  APPROUVE: ["VALIDE_CHEF", "PAYE", "REJETE"],
+  VALIDE_CHEF: ["VALIDE_EXPERT", "AWAITING_DECHARGE", "REJETE"],
+  VALIDE_EXPERT: ["AWAITING_DECHARGE", "REJETE"],
+  APPROUVE: ["VALIDE_CHEF", "AWAITING_DECHARGE", "REJETE"],
+  AWAITING_DECHARGE: [],
   PAYE: [],
   REJETE: [],
 };
@@ -247,7 +282,7 @@ export const EVENT_LABEL: Record<string, string> = {
   A_ENLEVER: "En attente de collecte",
   ENLEVES: "Colis récupéré",
   AU_DEPOT: "Arrivé au dépôt",
-  EXPEDIE_DESTINATION: "Expédié vers le dépôt de destination",
+  EXPEDIE_DESTINATION: "Sortie du dépôt",
   ARRIVE_DESTINATION: "Arrivé au dépôt de destination",
   AFFECTE_LIVREUR: "Affecté à un livreur",
   RETOUR_DEPOT: "Retour en agence",
@@ -566,9 +601,16 @@ function seedDb(): MockDb {
       ...p,
       agencyId: agencyByGov.get(p.governorate.toLowerCase()) ?? null,
       timeline: p.timeline ?? [{ at: p.createdAt, label: "Colis créé" }],
+      deliveredAt:
+        p.deliveredAt ??
+        (DELIVERED.includes(p.status) ? p.updatedAt ?? p.createdAt : null),
     })),
     tickets: MOCK_TICKETS,
-    payments: MOCK_PAYMENTS,
+    payments: MOCK_PAYMENTS.map((pay) => ({
+      ...pay,
+      dechargeUrl: pay.dechargeUrl ?? null,
+      dechargeUploadedAt: pay.dechargeUploadedAt ?? null,
+    })),
     zones: MOCK_ZONES,
     agencies,
     statusCategories: seedStatusCategories(),
@@ -580,6 +622,8 @@ function seedDb(): MockDb {
     pickupManifests,
     cashRegisters,
     livreurDeposits,
+    stockItems: [],
+    platformSettings: { versementHoldHours: DEFAULT_HOLD_HOURS },
   });
 }
 
@@ -621,6 +665,37 @@ function isMockDb(value: unknown): value is MockDb {
     }
   }
   if (!Array.isArray(v.livreurDeposits)) v.livreurDeposits = [];
+  if (!Array.isArray(v.stockItems)) v.stockItems = [];
+  else {
+    for (const s of v.stockItems as MockStockItem[]) {
+      if (s.size === undefined) s.size = null;
+      if (s.sku === undefined) s.sku = null;
+      if (s.defaultSalePrice === undefined) s.defaultSalePrice = null;
+      if (s.lowStockAt === undefined) s.lowStockAt = null;
+    }
+  }
+  if (!v.platformSettings || typeof v.platformSettings !== "object") {
+    v.platformSettings = { versementHoldHours: DEFAULT_HOLD_HOURS };
+  } else {
+    const ps = v.platformSettings as { versementHoldHours?: number };
+    if (
+      ps.versementHoldHours == null ||
+      !Number.isFinite(ps.versementHoldHours)
+    ) {
+      ps.versementHoldHours = DEFAULT_HOLD_HOURS;
+    }
+  }
+  for (const p of v.parcels as MockParcel[]) {
+    if (p.deliveredAt === undefined) {
+      p.deliveredAt = DELIVERED.includes(p.status)
+        ? p.updatedAt ?? p.createdAt
+        : null;
+    }
+  }
+  for (const pay of v.payments as MockPayment[]) {
+    if (pay.dechargeUrl === undefined) pay.dechargeUrl = null;
+    if (pay.dechargeUploadedAt === undefined) pay.dechargeUploadedAt = null;
+  }
   // One-shot: attach sample PDF URLs so existing demo DBs get clickable templates
   const meta = v as Record<string, unknown>;
   if (meta.mockDocsSeeded !== true) {
@@ -1121,6 +1196,13 @@ function applyParcelFields(target: MockParcel, dto: Record<string, unknown>) {
     }
     target.unitSalePrice = sale;
   }
+  if (dto.unitCost !== undefined) {
+    const cost = num(dto.unitCost);
+    if (cost === undefined || cost < 0) {
+      throw new MockHttpError(400, "Prix unitaire invalide");
+    }
+    target.unitCost = cost;
+  }
   if (dto.deliveryFee !== undefined) {
     const fee = num(dto.deliveryFee);
     if (fee === undefined || fee < 0) {
@@ -1462,6 +1544,27 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
     num(dto.deliveryFee) !== undefined ? Math.max(0, num(dto.deliveryFee)!) : 7;
   const returnFee =
     num(dto.returnFee) !== undefined ? Math.max(0, num(dto.returnFee)!) : 7;
+  const articleCount = Math.max(1, num(dto.articleCount) ?? 1);
+  let unitCost =
+    num(dto.unitCost) !== undefined ? Math.max(0, num(dto.unitCost)!) : null;
+  let stockItemId: number | null = null;
+  const stockId = num(dto.stockItemId);
+  if (stockId != null) {
+    const item = db().stockItems.find(
+      (s) => s.id === stockId && s.senderId === actor.id && s.isActive,
+    );
+    if (!item) throw new MockHttpError(400, "Article stock introuvable");
+    if (item.quantity < articleCount) {
+      throw new MockHttpError(
+        400,
+        `Stock insuffisant (dispo ${item.quantity})`,
+      );
+    }
+    item.quantity -= articleCount;
+    item.updatedAt = at;
+    unitCost = item.unitCost;
+    stockItemId = item.id;
+  }
   const parcel: MockParcel = {
     id: nextId(db().parcels),
     code: generateCode(mode === "EXTERNAL" ? "UMB-EXT" : "UMB"),
@@ -1472,6 +1575,8 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
     address,
     price,
     unitSalePrice: unitSale,
+    unitCost,
+    stockItemId,
     deliveryFee,
     returnFee,
     notes: null,
@@ -1486,11 +1591,16 @@ function createParcel(actor: Actor, dto: Record<string, unknown>) {
     driver: null,
     zone: null,
     agencyId: agencyIdForGov(governorate),
-    articleCount: 1,
+    articleCount,
     parcelCount: 1,
     timeline: [],
   };
   applyParcelFields(parcel, dto);
+  if (stockItemId != null) {
+    parcel.stockItemId = stockItemId;
+    parcel.unitCost = unitCost;
+    parcel.articleCount = articleCount;
+  }
   parcel.mode = mode;
   parcel.tryProduct = bool(dto.tryProduct) ?? bool(dto.allowOpen) ?? false;
   if (!parcel.agencyId) parcel.agencyId = agencyIdForGov(parcel.governorate);
@@ -1593,7 +1703,8 @@ function statusCounts(actor: Actor): StatusCard[] {
 }
 
 const PAYMENT_HISTORY_LABEL: Partial<Record<PaymentStatus, string>> = {
-  EN_DEMANDE: "Demande créée",
+  AWAITING_DECHARGE: "En attente de décharge",
+  EN_DEMANDE: "Versement préparé",
   VALIDE_FINANCE: "Validé finance",
   VALIDE_CHEF: "Validé chef d’agence",
   VALIDE_EXPERT: "Validé expert",
@@ -1609,7 +1720,7 @@ function withPaymentHistory(payment: MockPayment): MockPayment {
     {
       at: payment.createdAt,
       status: "EN_DEMANDE" as PaymentStatus,
-      label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Demande créée",
+      label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Versement préparé",
       actorName: payment.sender?.name ?? null,
     },
   ];
@@ -1652,17 +1763,30 @@ function analytics(actor: Actor) {
   );
   const finance = summarizeSenderFinance(
     moneyParcels.map((p) => ({
+      id: p.id,
       price: Number(p.price),
       unitSalePrice:
         p.unitSalePrice != null ? Number(p.unitSalePrice) : null,
+      unitCost: p.unitCost != null ? Number(p.unitCost) : null,
       deliveryFee: Number(p.deliveryFee ?? 0),
       returnFee: Number(p.returnFee ?? 0),
       status: p.status,
+      deliveredAt: p.deliveredAt ?? null,
     })),
-    payments.map((p) => ({ amount: Number(p.amount), status: p.status })),
+    payments.map((p) => ({
+      amount: Number(p.amount),
+      status: p.status,
+      items: (p.items ?? []).map((i) => ({
+        parcelId: i.parcel.id,
+        amount: Number(i.amount),
+      })),
+    })),
+    { holdHours: holdHours() },
   );
   const {
     disponible,
+    indisponible,
+    holdHours: holdHoursOut,
     enDemande,
     aVerser,
     enPipeline,
@@ -1711,6 +1835,8 @@ function analytics(actor: Actor) {
     },
     soldes: {
       disponible,
+      indisponible,
+      holdHours: holdHoursOut,
       enDemande,
       aVerser,
       enPipeline,
@@ -1892,7 +2018,17 @@ function updateTicketStatus(actor: Actor, id: number, dto: Record<string, unknow
   return ticket;
 }
 
+function holdHours(): number {
+  return db().platformSettings?.versementHoldHours ?? DEFAULT_HOLD_HOURS;
+}
+
 function createPayment(actor: Actor, dto: Record<string, unknown>) {
+  if (!MONEY_STAFF.includes(actor.role)) {
+    throw new MockHttpError(
+      403,
+      "Seuls les équipes finance / agence préparent un versement",
+    );
+  }
   const ids = Array.isArray(dto.parcelIds)
     ? Array.from(new Set(dto.parcelIds.map(Number).filter(Number.isInteger)))
     : [];
@@ -1902,22 +2038,37 @@ function createPayment(actor: Actor, dto: Record<string, unknown>) {
       .payments.filter((p) => ACTIVE_PAYMENT.includes(p.status))
       .flatMap((p) => p.items.map((i) => i.parcel.id)),
   );
+  const hours = holdHours();
+  const now = new Date();
   const parcels = db().parcels.filter(
     (p) =>
       ids.includes(p.id) &&
-      DELIVERED.includes(p.status) &&
-      !blocked.has(p.id) &&
-      (actor.role !== "EXPEDITEUR" || p.senderId === actor.id),
+      p.status === "LIVRES" &&
+      !blocked.has(p.id),
   );
   if (parcels.length !== ids.length) {
     throw new MockHttpError(
       400,
-      "Certains colis sont introuvables, non livrés ou déjà dans une demande",
+      "Certains colis sont introuvables, non livrés ou déjà dans un versement",
+    );
+  }
+  const notReady = parcels.filter(
+    (p) =>
+      !isHoldElapsed(
+        p.deliveredAt ?? p.updatedAt ?? p.createdAt,
+        hours,
+        now,
+      ),
+  );
+  if (notReady.length) {
+    throw new MockHttpError(
+      400,
+      `Délai de versement non écoulé (${hours}h) pour certains colis`,
     );
   }
   const senderId = parcels[0].senderId;
   if (parcels.some((p) => p.senderId !== senderId)) {
-    throw new MockHttpError(400, "Une demande ne peut concerner qu’un seul expéditeur");
+    throw new MockHttpError(400, "Un versement ne peut concerner qu’un seul expéditeur");
   }
   const sender = db().users.find((u) => u.id === senderId);
   const at = nowIso();
@@ -1936,6 +2087,8 @@ function createPayment(actor: Actor, dto: Record<string, unknown>) {
     note: str(dto.note) ?? null,
     createdAt: at,
     updatedAt: at,
+    dechargeUrl: null,
+    dechargeUploadedAt: null,
     sender: sender
       ? { id: sender.id, name: sender.name, email: sender.email }
       : undefined,
@@ -1944,7 +2097,7 @@ function createPayment(actor: Actor, dto: Record<string, unknown>) {
       {
         at,
         status: "EN_DEMANDE",
-        label: "Demande créée",
+        label: "Versement préparé",
         actorName: actor.name,
       },
     ],
@@ -1958,6 +2111,43 @@ function normalizePaymentStatus(status: PaymentStatus): PaymentStatus {
   return status === "APPROUVE" ? "VALIDE_FINANCE" : status;
 }
 
+function markPaymentPaid(actor: Actor, payment: MockPayment) {
+  const at = nowIso();
+  const existingHistory = payment.history ?? [];
+  const priorHistory =
+    existingHistory.length > 0
+      ? existingHistory
+      : [
+          {
+            at: payment.createdAt,
+            status: "EN_DEMANDE" as PaymentStatus,
+            label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Versement préparé",
+            actorName: payment.sender?.name ?? null,
+          },
+        ];
+  payment.status = "PAYE";
+  payment.updatedAt = at;
+  payment.history = [
+    ...priorHistory,
+    {
+      at,
+      status: "PAYE",
+      label: PAYMENT_HISTORY_LABEL.PAYE ?? "Versé",
+      actorName: actor.name,
+    },
+  ];
+  for (const item of payment.items) {
+    const parcel = db().parcels.find((p) => p.id === item.parcel.id);
+    if (!parcel) continue;
+    parcel.status = "LIVRES_PAYES";
+    pushEvent(parcel, EVENT_LABEL.LIVRES_PAYES, {
+      status: "LIVRES_PAYES",
+      comment: `Paiement #${payment.id} versé (décharge)`,
+      actor,
+    });
+  }
+}
+
 function updatePaymentStatus(actor: Actor, id: number, dto: Record<string, unknown>) {
   const payment = db().payments.find((p) => p.id === id);
   if (!payment) throw new MockHttpError(404, "Demande introuvable");
@@ -1965,11 +2155,25 @@ function updatePaymentStatus(actor: Actor, id: number, dto: Record<string, unkno
   const status = normalizePaymentStatus(dto.status as PaymentStatus);
   const amount = payment.amount;
   const requiresExpert = amount >= 5000;
+  if (status === "PAYE") {
+    throw new MockHttpError(
+      400,
+      "Le versement PAYÉ se fait via la décharge signée par l’expéditeur",
+    );
+  }
   if (status === "REJETE") {
-    if (current === "PAYE" || current === "REJETE") {
-      throw new MockHttpError(400, "Demande déjà clôturée");
+    if (
+      current === "PAYE" ||
+      current === "REJETE" ||
+      current === "AWAITING_DECHARGE"
+    ) {
+      throw new MockHttpError(400, "Demande déjà clôturée ou en décharge");
     }
-  } else if (current === "VALIDE_CHEF" && status === "PAYE" && requiresExpert) {
+  } else if (
+    current === "VALIDE_CHEF" &&
+    status === "AWAITING_DECHARGE" &&
+    requiresExpert
+  ) {
     throw new MockHttpError(400, "Validation expert requise (≥ 5k ou budget ≤ 50k)");
   } else if (!PAYMENT_TRANSITIONS[current]?.includes(status)) {
     throw new MockHttpError(400, `Transition ${current} → ${String(status)} impossible`);
@@ -1983,7 +2187,7 @@ function updatePaymentStatus(actor: Actor, id: number, dto: Record<string, unkno
           {
             at: payment.createdAt,
             status: "EN_DEMANDE" as PaymentStatus,
-            label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Demande créée",
+            label: PAYMENT_HISTORY_LABEL.EN_DEMANDE ?? "Versement préparé",
             actorName: payment.sender?.name ?? null,
           },
         ];
@@ -1998,23 +2202,43 @@ function updatePaymentStatus(actor: Actor, id: number, dto: Record<string, unkno
       actorName: actor.name,
     },
   ];
-  if (status === "PAYE") {
-    for (const item of payment.items) {
-      const parcel = db().parcels.find((p) => p.id === item.parcel.id);
-      if (!parcel) continue;
-      parcel.status = "LIVRES_PAYES";
-      pushEvent(parcel, EVENT_LABEL.LIVRES_PAYES, {
-        status: "LIVRES_PAYES",
-        comment: `Paiement #${id} versé`,
-        actor,
-      });
-    }
-  }
   commit();
   return {
     ...payment,
     isSmall: amount < 5000,
     requiresExpert,
+  };
+}
+
+function uploadPaymentDecharge(
+  actor: Actor,
+  id: number,
+  dto: Record<string, unknown>,
+) {
+  if (actor.role !== "EXPEDITEUR") throw new MockHttpError(403, "Forbidden");
+  const payment = db().payments.find((p) => p.id === id);
+  if (!payment) throw new MockHttpError(404, "Demande introuvable");
+  if (payment.sender?.email !== actor.email && payment.sender?.id !== actor.id) {
+    throw new MockHttpError(403, "Forbidden");
+  }
+  if (normalizePaymentStatus(payment.status) !== "AWAITING_DECHARGE") {
+    throw new MockHttpError(
+      400,
+      "Ce versement n’attend pas encore votre décharge signée",
+    );
+  }
+  const url = str(dto.dechargeUrl)?.trim();
+  if (!url || url.length < 4) {
+    throw new MockHttpError(400, "URL de décharge invalide");
+  }
+  payment.dechargeUrl = url;
+  payment.dechargeUploadedAt = nowIso();
+  markPaymentPaid(actor, payment);
+  commit();
+  return {
+    ...payment,
+    isSmall: payment.amount < 5000,
+    requiresExpert: payment.amount >= 5000,
   };
 }
 
@@ -4157,7 +4381,12 @@ const ROUTES: Route[] = [
         : keepReason
           ? (parcel.statusReason ?? null)
           : null;
+      const enteringLivres =
+        status === "LIVRES" && parcel.status !== "LIVRES";
       parcel.status = status;
+      if (enteringLivres && !parcel.deliveredAt) {
+        parcel.deliveredAt = nowIso();
+      }
       const eventLabel =
         actor.role === "EXPEDITEUR" && status === "RETOUR_RECU"
           ? "Vérification passée (expéditeur)"
@@ -4279,7 +4508,7 @@ const ROUTES: Route[] = [
   {
     method: "POST",
     pattern: /^\/payments$/,
-    roles: SENDERS,
+    roles: MONEY_STAFF,
     handler: ({ actor, body }) => createPayment(actor, body),
   },
   {
@@ -4287,6 +4516,38 @@ const ROUTES: Route[] = [
     pattern: /^\/payments\/(\d+)\/status$/,
     roles: MONEY_STAFF,
     handler: ({ actor, params, body }) => updatePaymentStatus(actor, Number(params[0]), body),
+  },
+  {
+    method: "POST",
+    pattern: /^\/payments\/(\d+)\/decharge$/,
+    roles: ["EXPEDITEUR"] as AppRole[],
+    handler: ({ actor, params, body }) =>
+      uploadPaymentDecharge(actor, Number(params[0]), body),
+  },
+  {
+    method: "GET",
+    pattern: /^\/settings\/platform$/,
+    roles: [
+      ...MONEY_STAFF,
+      "EXPEDITEUR",
+    ] as AppRole[],
+    handler: () => ({
+      versementHoldHours: holdHours(),
+    }),
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/settings\/platform$/,
+    roles: ["SUPER_ADMIN", "ADMIN"] as AppRole[],
+    handler: ({ body }) => {
+      const n = Number(body.versementHoldHours);
+      if (!Number.isFinite(n) || n < 1 || n > 720) {
+        throw new MockHttpError(400, "Délai de versement invalide (1–720 heures)");
+      }
+      db().platformSettings.versementHoldHours = Math.floor(n);
+      commit();
+      return { versementHoldHours: holdHours() };
+    },
   },
   {
     method: "GET",
@@ -4382,6 +4643,191 @@ const ROUTES: Route[] = [
       }
       commit();
       return { id, deleted: true };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/stock$/,
+    roles: ["EXPEDITEUR"],
+    handler: ({ actor }) => {
+      const items = db()
+        .stockItems.filter((s) => s.senderId === actor.id && s.isActive)
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name) || a.variant.localeCompare(b.variant),
+        )
+        .map(stockItemView);
+      const totalQty = items.reduce((sum, s) => sum + s.quantity, 0);
+      const stockValue =
+        Math.round(items.reduce((sum, s) => sum + s.stockValue, 0) * 1000) /
+        1000;
+      return {
+        items,
+        summary: { totalQty, stockValue, skuCount: items.length },
+      };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/stock$/,
+    roles: ["EXPEDITEUR"],
+    handler: ({ actor, body }) => {
+      const name = str(body.name)?.trim() ?? "";
+      const variant = str(body.variant)?.trim() ?? "";
+      const quantity = num(body.quantity);
+      const unitCost = num(body.unitCost);
+      if (!name) throw new MockHttpError(400, "Nom produit requis");
+      if (quantity === undefined || quantity < 0) {
+        throw new MockHttpError(400, "Quantité invalide");
+      }
+      if (unitCost === undefined || unitCost < 0) {
+        throw new MockHttpError(400, "Prix unitaire invalide");
+      }
+      const clash = db().stockItems.find(
+        (s) =>
+          s.senderId === actor.id &&
+          s.isActive &&
+          s.name.toLowerCase() === name.toLowerCase() &&
+          s.variant.toLowerCase() === variant.toLowerCase(),
+      );
+      if (clash) {
+        throw new MockHttpError(
+          400,
+          "Cet article (nom + variante) existe déjà",
+        );
+      }
+      const at = nowIso();
+      const sale = num(body.defaultSalePrice);
+      const low = num(body.lowStockAt);
+      const item: MockStockItem = {
+        id: nextId(db().stockItems),
+        senderId: actor.id,
+        name,
+        variant,
+        size: str(body.size)?.trim() || null,
+        sku: str(body.sku)?.trim() || null,
+        quantity: Math.floor(quantity),
+        unitCost,
+        defaultSalePrice: sale !== undefined && sale >= 0 ? sale : null,
+        lowStockAt:
+          low !== undefined && low >= 0 ? Math.floor(low) : null,
+        notes: str(body.notes)?.trim() || null,
+        isActive: true,
+        createdAt: at,
+        updatedAt: at,
+      };
+      db().stockItems.push(item);
+      commit();
+      return stockItemView(item);
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/stock\/(\d+)$/,
+    roles: ["EXPEDITEUR"],
+    handler: ({ actor, params, body }) => {
+      const item = db().stockItems.find(
+        (s) =>
+          s.id === Number(params[0]) &&
+          s.senderId === actor.id &&
+          s.isActive,
+      );
+      if (!item) throw new MockHttpError(404, "Article introuvable");
+      if (body.name !== undefined) {
+        const name = str(body.name)?.trim() ?? "";
+        if (!name) throw new MockHttpError(400, "Nom produit requis");
+        item.name = name;
+      }
+      if (body.variant !== undefined) {
+        item.variant = str(body.variant)?.trim() ?? "";
+      }
+      if (body.size !== undefined) {
+        item.size = str(body.size)?.trim() || null;
+      }
+      if (body.sku !== undefined) {
+        item.sku = str(body.sku)?.trim() || null;
+      }
+      if (body.quantity !== undefined) {
+        const quantity = num(body.quantity);
+        if (quantity === undefined || quantity < 0) {
+          throw new MockHttpError(400, "Quantité invalide");
+        }
+        item.quantity = Math.floor(quantity);
+      }
+      if (body.unitCost !== undefined) {
+        const unitCost = num(body.unitCost);
+        if (unitCost === undefined || unitCost < 0) {
+          throw new MockHttpError(400, "Prix unitaire invalide");
+        }
+        item.unitCost = unitCost;
+      }
+      if (body.defaultSalePrice !== undefined) {
+        const sale = num(body.defaultSalePrice);
+        if (sale === undefined || sale < 0) {
+          throw new MockHttpError(400, "Prix de vente invalide");
+        }
+        item.defaultSalePrice = sale;
+      }
+      if (body.lowStockAt !== undefined) {
+        const low = num(body.lowStockAt);
+        if (low === undefined || low < 0) {
+          throw new MockHttpError(400, "Seuil stock bas invalide");
+        }
+        item.lowStockAt = Math.floor(low);
+      }
+      if (body.notes !== undefined) {
+        item.notes = str(body.notes)?.trim() || null;
+      }
+      item.updatedAt = nowIso();
+      commit();
+      return stockItemView(item);
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/stock\/(\d+)\/adjust$/,
+    roles: ["EXPEDITEUR"],
+    handler: ({ actor, params, body }) => {
+      const item = db().stockItems.find(
+        (s) =>
+          s.id === Number(params[0]) &&
+          s.senderId === actor.id &&
+          s.isActive,
+      );
+      if (!item) throw new MockHttpError(404, "Article introuvable");
+      const delta = num(body.delta);
+      if (delta === undefined || delta === 0) {
+        throw new MockHttpError(400, "Delta invalide");
+      }
+      const next = item.quantity + Math.trunc(delta);
+      if (next < 0) {
+        throw new MockHttpError(
+          400,
+          `Stock insuffisant (disponible : ${item.quantity})`,
+        );
+      }
+      item.quantity = next;
+      item.updatedAt = nowIso();
+      commit();
+      return stockItemView(item);
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/stock\/(\d+)$/,
+    roles: ["EXPEDITEUR"],
+    handler: ({ actor, params }) => {
+      const item = db().stockItems.find(
+        (s) =>
+          s.id === Number(params[0]) &&
+          s.senderId === actor.id &&
+          s.isActive,
+      );
+      if (!item) throw new MockHttpError(404, "Article introuvable");
+      item.isActive = false;
+      item.updatedAt = nowIso();
+      commit();
+      return { id: item.id, deleted: true };
     },
   },
   {
@@ -4562,6 +5008,56 @@ const ROUTES: Route[] = [
     handler: ({ actor, body }) => changePassword(actor, body),
   },
   {
+    method: "GET",
+    pattern: /^\/users\/me\/create-parcel-draft$/,
+    roles: SENDERS,
+    handler: ({ actor }) => {
+      const user = db().users.find((u) => u.id === actor.id);
+      if (!user) throw new MockHttpError(404, "Utilisateur introuvable");
+      const draft = user.createParcelDraft;
+      if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+        return { draft: null };
+      }
+      return { draft };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/users\/me\/create-parcel-draft$/,
+    roles: SENDERS,
+    handler: ({ actor, body }) => {
+      const user = db().users.find((u) => u.id === actor.id);
+      if (!user) throw new MockHttpError(404, "Utilisateur introuvable");
+      const draft = body.draft;
+      if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+        throw new MockHttpError(400, "Draft invalide");
+      }
+      const stepIndex = (draft as { stepIndex?: unknown }).stepIndex;
+      if (typeof stepIndex !== "number" || !Number.isFinite(stepIndex)) {
+        throw new MockHttpError(400, "Draft.stepIndex requis");
+      }
+      const raw = JSON.stringify(draft);
+      if (raw.length > 80_000) {
+        throw new MockHttpError(400, "Draft trop volumineux");
+      }
+      user.createParcelDraft = draft as Record<string, unknown>;
+      commit();
+      return { draft: user.createParcelDraft };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/users\/me\/create-parcel-draft$/,
+    roles: SENDERS,
+    handler: ({ actor }) => {
+      const user = db().users.find((u) => u.id === actor.id);
+      if (!user) throw new MockHttpError(404, "Utilisateur introuvable");
+      user.createParcelDraft = null;
+      commit();
+      return { draft: null };
+    },
+  },
+  {
     method: "PATCH",
     pattern: /^\/users\/(\d+)$/,
     roles: STAFF,
@@ -4674,6 +5170,8 @@ const ROUTES: Route[] = [
         receipt: mockDocUrl("receipt"),
         facture: mockDocUrl("facture"),
         decharge: mockDocUrl("decharge"),
+        decharge_versement: mockDocUrl("decharge_versement"),
+        "decharge-versement": mockDocUrl("decharge_versement"),
         cin: mockDocUrl("cin"),
         "cin-front": mockDocUrl("cin"),
         "cin-back": mockDocUrl("cin"),

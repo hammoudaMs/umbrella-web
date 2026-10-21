@@ -27,6 +27,7 @@ import {
 import { CopyableCode } from "@/components/CopyableCode";
 import { HeroVanScene } from "@/components/landing/HeroVanScene";
 import { useT } from "@/i18n/locale-context";
+import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
 import { type OpsKpi, type OpsKpiTone } from "@/lib/ops-status-kpis";
 import type { PortalHomeConfig } from "@/lib/portal-home";
@@ -463,14 +464,19 @@ export type ExpediteurAsideData = {
   enDemande: number;
 };
 
+export type HeroSoldes = {
+  disponible: number;
+  indisponible: number;
+};
+
 type OpsDashboardProps = {
   basePath: string;
   firstName: string;
   home: PortalHomeConfig;
   kpis: OpsKpi[];
   revenue: number;
-  /** Cash balance held by the user (e.g. livreur), shown in the hero. */
-  solde?: number | null;
+  /** Expediteur wallet: available vs locked in payment pipeline. */
+  soldes?: HeroSoldes | null;
   inProgress: number;
   delivered: number;
   deliveryRate: number;
@@ -494,7 +500,7 @@ export function OpsDashboardBoard({
   firstName,
   home,
   kpis,
-  solde = null,
+  soldes = null,
   performanceParcels = [],
   last7Days,
   recent,
@@ -504,6 +510,8 @@ export function OpsDashboardBoard({
   onCreateParcel,
 }: OpsDashboardProps) {
   const t = useT();
+  const { session } = useAuth();
+  const role = session?.user.role;
   const periodLabels: Record<PerfPeriod, string> = {
     today: t("common.today"),
     week: t("common.week"),
@@ -514,7 +522,14 @@ export function OpsDashboardBoard({
   const maxDay = Math.max(1, ...last7Days.map((d) => d.total));
   const analyticsHref = `${basePath}/analytics`;
   const parcelsHref = `${basePath}/parcels`;
-  const paymentsHref = `${basePath}/payments`;
+  const paymentsHref =
+    role === "LIVREUR" ? `${basePath}/versement` : `${basePath}/payments`;
+  const walletCtaLabel =
+    role === "LIVREUR"
+      ? t("mobile.moneyLivreurVersement")
+      : role === "EXPEDITEUR"
+        ? t("mobile.withdrawRequest")
+        : t("mobile.moneyStaffPayments");
   const ticketsHref = `${basePath}/tickets`;
   const retoursHref = home.retoursHref;
   const isExpediteurAside = home.asideMode === "expediteur";
@@ -630,18 +645,40 @@ export function OpsDashboardBoard({
               {subtitle}
             </p>
 
-            {solde != null ? (
-              <div className="mt-4 inline-flex w-fit items-center gap-2.5 rounded-full border border-emerald-500/35 bg-black/55 px-3.5 py-2 shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
-                <Coins
-                  className="h-4 w-4 shrink-0 text-emerald-400"
-                  aria-hidden
-                />
-                <span className="text-[12px] font-semibold uppercase tracking-wide text-emerald-300">
-                  Solde
-                </span>
-                <span className="font-display text-[15px] font-extrabold tabular-nums text-white">
-                  {formatMoney(solde)}
-                </span>
+            {soldes != null ? (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/35 bg-black/55 px-3 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
+                  <Coins
+                    className="h-3.5 w-3.5 shrink-0 text-emerald-400"
+                    aria-hidden
+                  />
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                    {t("mobile.soldeDispo")}
+                  </span>
+                  <span className="font-display text-[14px] font-extrabold tabular-nums text-white">
+                    {formatMoney(soldes.disponible)}
+                  </span>
+                </div>
+                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-500/35 bg-black/55 px-3 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
+                  <Banknote
+                    className="h-3.5 w-3.5 shrink-0 text-amber-400"
+                    aria-hidden
+                  />
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                    {t("mobile.soldeIndispo")}
+                  </span>
+                  <span className="font-display text-[14px] font-extrabold tabular-nums text-white">
+                    {formatMoney(soldes.indisponible)}
+                  </span>
+                </div>
+                <Link
+                  href={paymentsHref}
+                  title={walletCtaLabel}
+                  aria-label={walletCtaLabel}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ops-accent/45 bg-ops-accent text-white shadow-[0_4px_16px_rgba(153,18,17,0.45)] transition hover:bg-ops-accent-soft"
+                >
+                  <Wallet className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                </Link>
               </div>
             ) : null}
 

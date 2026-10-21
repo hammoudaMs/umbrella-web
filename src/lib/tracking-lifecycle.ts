@@ -44,7 +44,7 @@ export function trackingStepsFor(status: string): TrackingStep[] {
 
   return lifecycle.map((key, i) => ({
     key,
-    label: STATUS_META[key].label,
+    label: STATUS_META[key].trackingLabel,
     done: idx >= 0 && i < idx,
     current: idx >= 0 && i === idx,
   }));

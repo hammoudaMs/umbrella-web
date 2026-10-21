@@ -32,6 +32,10 @@ import {
 } from "@/lib/domain";
 import { mediaUrl } from "@/lib/media";
 import { openPickupManifestBordereauPdf } from "@/lib/parcel-report";
+import {
+  canClosePickupManifest,
+  canCreatePickupManifest,
+} from "@/lib/role-capabilities";
 import { useApiQuery } from "@/lib/use-api";
 import { cn } from "@/lib/cn";
 
@@ -59,12 +63,9 @@ export function PickupManifestManager({ basePath, lockedKind }: Props) {
   const token = session?.accessToken;
   const role = session?.user.role;
   const isSender = role === "EXPEDITEUR";
-  const canCreatePre =
-    !isSender &&
-    ["PICKUP", "MAGASINIER", "CHEF_AGENCE", "ADMIN", "SUPER_ADMIN"].includes(
-      role ?? "",
-    );
-  const canCloseManifest = !isSender;
+  const canCreateManifest = canCreatePickupManifest(role);
+  const canCreatePre = canCreateManifest && !isSender;
+  const canCloseManifest = canClosePickupManifest(role);
 
   const kinds: PickupManifestKind[] = lockedKind
     ? [lockedKind]
@@ -221,17 +222,19 @@ export function PickupManifestManager({ basePath, lockedKind }: Props) {
         }
         description={t("parcels.manifestDescription", { max: MAX_MANIFEST })}
         actions={
-          <Button
-            icon={ClipboardList}
-            disabled={selected.size === 0 || creating}
-            loading={creating}
-            onClick={() => void createManifest()}
-          >
-            {t("parcels.createManifest", {
-              selected: selected.size,
-              max: MAX_MANIFEST,
-            })}
-          </Button>
+          canCreateManifest ? (
+            <Button
+              icon={ClipboardList}
+              disabled={selected.size === 0 || creating}
+              loading={creating}
+              onClick={() => void createManifest()}
+            >
+              {t("parcels.createManifest", {
+                selected: selected.size,
+                max: MAX_MANIFEST,
+              })}
+            </Button>
+          ) : null
         }
       />
 

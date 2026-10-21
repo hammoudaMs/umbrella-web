@@ -31,6 +31,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { useConfirm, useToast } from "@/components/Feedback";
+import { canSeeWarehouseScanner } from "@/lib/role-capabilities";
 import { PORTAL_BY_ROLE, type AppRole } from "@/lib/roles";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -905,6 +906,26 @@ export function ScannerPage({ role }: { role: AppRole }) {
   const caseReadyForMutate =
     Boolean(selectedCase) &&
     (!stepNeedsLivreur || Boolean(selectedLivreur) || role === "LIVREUR");
+
+  if (!canSeeWarehouseScanner(role)) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4 pb-8">
+        <EmptyState
+          icon={ScanLine}
+          title={t("scanner.title")}
+          description="Le scanner entrepôt n’est pas disponible pour ce compte. Utilisez Colis ou Suivi."
+          action={
+            <Link
+              href={`${base}/parcels`}
+              className={buttonClass("primary")}
+            >
+              {t("nav.parcels")}
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 pb-8">

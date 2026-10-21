@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { KeyRound, Save, UserRound } from "lucide-react";
 import { LocaleToggle } from "@/components/LocaleToggle";
 import { errorText, useToast } from "@/components/Feedback";
+import { PlatformHoldSettings } from "@/components/PlatformHoldSettings";
 import { SenderParcelInputsSettings } from "@/components/SenderParcelInputsSettings";
 import { Avatar, Badge, Button, PageHeader, Panel, TextField } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
@@ -107,6 +108,16 @@ export function SettingsForm({
       </Panel>
 
       {user.role === "EXPEDITEUR" ? <SenderParcelInputsSettings /> : null}
+
+      {user.role === "SUPER_ADMIN" || user.role === "ADMIN" ? (
+        <PlatformHoldSettings />
+      ) : null}
+
+      {user.role === "FINANCE" ||
+      user.role === "CHEF_AGENCE" ||
+      user.role === "EXPERT_COMPTABLE" ? (
+        <PlatformHoldSettings readOnly />
+      ) : null}
 
       <Panel>
         <div className="mb-4 flex items-center gap-2">
