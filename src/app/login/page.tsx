@@ -158,33 +158,35 @@ function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-8 rounded-2xl border border-cream bg-cream-soft/30 p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-          {t("auth.demoAccounts")}
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {demoAccounts.map((acc) => (
-            <button
-              key={acc.email}
-              type="button"
-              disabled={loading}
-              onClick={() => void loginWith(acc.email, acc.password)}
-              className={`rounded-xl border bg-surface px-3 py-2 text-left transition hover:border-brand disabled:opacity-60 ${
-                picked === acc.email
-                  ? "border-brand ring-1 ring-brand/30"
-                  : "border-cream"
-              }`}
-            >
-              <span className="block text-sm font-semibold text-ink">
-                {t(acc.labelKey)}
-              </span>
-              <span className="block truncate text-[11px] text-ink-muted keep-ltr">
-                {acc.email}
-              </span>
-            </button>
-          ))}
+      {isMock ? (
+        <div className="mt-8 rounded-2xl border border-cream bg-cream-soft/30 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+            {t("auth.demoAccounts")}
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {demoAccounts.map((acc) => (
+              <button
+                key={acc.email}
+                type="button"
+                disabled={loading}
+                onClick={() => void loginWith(acc.email, acc.password)}
+                className={`rounded-xl border bg-surface px-3 py-2 text-left transition hover:border-brand disabled:opacity-60 ${
+                  picked === acc.email
+                    ? "border-brand ring-1 ring-brand/30"
+                    : "border-cream"
+                }`}
+              >
+                <span className="block text-sm font-semibold text-ink">
+                  {t(acc.labelKey)}
+                </span>
+                <span className="block truncate text-[11px] text-ink-muted keep-ltr">
+                  {acc.email}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </AuthLayout>
   );
 }
